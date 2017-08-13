@@ -232,7 +232,6 @@ contract('GaoPoolTest', function(accounts) {
        let miner = await setup_miner();
        await miner.set_block(5000); // 2nd epoch (1st block)
        let res = await miner.remaining_epoch_blocks(5000); 
-       console.log(res.valueOf());
        await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '200000'});
        res = await miner.find_contribution(accounts[0]);
        assert.equal(res[0].valueOf(), 1);

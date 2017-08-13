@@ -22,6 +22,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
     uint256 public constant divisible_units = 10000000;
     uint256 public blockCreationRate = 0;
 
+    uint256 public last_mined_block = 1000000000;
+
 
     // Pointer to mining contract
     BitcoineumInterface base_contract;
@@ -63,7 +65,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
     bool public isPaused = false;
 
     // Set the maximum bet for a single user
-    uint256 public max_bet = 1000 ether;
+    uint256 public max_bet = 10000 ether;
 
 
     function GaoPool() {
@@ -123,11 +125,18 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
 
     function add_user(address _who, uint256 _value, uint256 _current_epoch) internal {
+       uint256 _current_blocknum = external_to_internal_block_number(current_external_block());
+       uint256 adjustment = 0;
+       if (_current_blocknum == last_mined_block) {
+         adjustment = 1;
+       }
        users[_who].epoch = _current_epoch;
        // Evenly divide the attempt over the remaining blocks in this epoch
        uint256 _current_remaining = remaining_epoch_blocks(_current_epoch);
-       LogEvent("remainng", _current_remaining);
-       LogEvent("value", _value);
+       // This is a race condition on mining
+       if (_current_remaining > 0) {
+          _current_remaining -= adjustment;
+       }
        uint256 _splitAttempt = _value / _current_remaining;
        uint256 _current_epoch_attempt = _splitAttempt * _current_remaining;
        users[_who].total_attempt = _current_epoch_attempt;
@@ -168,13 +177,15 @@ contract GaoPool is Ownable, ReentrancyGuard {
            revert();
        }
 
+
        uint256 _current_epoch = current_epoch();
+
        if (users[msg.sender].isCreated) {
          // The user entry exists
          // if the epoch is passed we need to roll the balance from that epoch to the user if it hasn't been done already
          // and treat it like a new epoch
-         // if the epoch hasn't passed we need to readjust the the units ???????/XXXX
-         if (users[msg.sender].epoch < _current_epoch) {
+         // We check for previous epoch and leeway into next epoch to prevent race condition on claim
+         if (users[msg.sender].epoch < _current_epoch && (remaining_epoch_blocks(users[msg.sender].epoch+1) < 98)) {
             // The user's last betting period is over
             // Let's add to the user's balance
             epoch storage ep = epochs[users[msg.sender].epoch];
@@ -205,7 +216,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
          adjust_epoch(_current_epoch,
                       users[msg.sender].total_attempt,
                       users[msg.sender].partial_attempt);
-         LogEvent("Got this far", 0);
 
         }
     }
@@ -232,7 +242,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
     {
        uint256 _current_epoch = current_epoch();
        uint256 _user_epoch = users[msg.sender].epoch;
-       if (_user_epoch < _current_epoch) {
+       if (_user_epoch < _current_epoch && (remaining_epoch_blocks(_user_epoch+1) < 98) ) {
           require(!users[msg.sender].isRedeemed);
 
           epoch storage ep = epochs[_user_epoch];
@@ -259,6 +269,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
         base_contract.mine.value(e.adjusted_unit)();
         e.mined_blocks += 1;
      }
+     last_mined_block = _blockNum;
 
     }
 
