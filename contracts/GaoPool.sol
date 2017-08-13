@@ -185,7 +185,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
          // if the epoch is passed we need to roll the balance from that epoch to the user if it hasn't been done already
          // and treat it like a new epoch
          // We check for previous epoch and leeway into next epoch to prevent race condition on claim
-         if (users[msg.sender].epoch < _current_epoch && (remaining_epoch_blocks(users[msg.sender].epoch+1) < 98)) {
+         if (is_epoch_passed(users[msg.sender].epoch)) {
             // The user's last betting period is over
             // Let's add to the user's balance
             epoch storage ep = epochs[users[msg.sender].epoch];
@@ -224,7 +224,13 @@ contract GaoPool is Ownable, ReentrancyGuard {
        return (_blockNumber / contract_period);
     }
 
+    function is_epoch_passed(uint256 _epoch) constant returns(bool) {
+        uint256 _current_epoch = current_epoch();
+        return _epoch < _current_epoch && (remaining_epoch_blocks(_epoch+1) < 98);
+    }
+
     function do_redemption(address _who) internal {
+      require(!users[msg.sender].isRedeemed);
       uint256 balance = users[_who].balance;
       if (balance > 0) {
          uint256 owner_cut = (balance / 100) * pool_percentage;
@@ -242,8 +248,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
     {
        uint256 _current_epoch = current_epoch();
        uint256 _user_epoch = users[msg.sender].epoch;
-       if (_user_epoch < _current_epoch && (remaining_epoch_blocks(_user_epoch+1) < 98) ) {
-          require(!users[msg.sender].isRedeemed);
+       if (is_epoch_passed(_user_epoch)) {
 
           epoch storage ep = epochs[_user_epoch];
           uint256 _balance = calculate_proportional_reward(ep.total_claimed,
