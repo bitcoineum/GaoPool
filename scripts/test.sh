@@ -6,8 +6,8 @@ if [ ! $trpc_running ]; then
   echo "Starting our own testrpc node instance"
   # we give each account 1M ether, needed for high-value tests
   npm-run testrpc \
-    --accounts="300"\
     --port=8646 \
+    --accounts="300"\
   > /dev/null &
   trpc_pid=$!
 fi

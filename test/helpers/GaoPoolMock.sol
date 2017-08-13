@@ -1,6 +1,6 @@
 pragma solidity ^0.4.13;
 
-import '../../contracts/SharkPool.sol';
+import '../../contracts/GaoPool.sol';
 
 /**
  * @title Bitcoineum Mocking framework
@@ -9,7 +9,7 @@ import '../../contracts/SharkPool.sol';
  */
 
 
-contract SharkPoolMock is SharkPool {
+contract GaoPoolMock is GaoPool {
 
   address bitcoineum_contract_address;
   uint256 current_block = 1;
@@ -29,16 +29,6 @@ contract SharkPoolMock is SharkPool {
   function set_bitcoineum_contract_address(address _addr) public {
     bitcoineum_contract_address = _addr;
     base_contract = BitcoineumInterface(get_bitcoineum_contract_address());
-  }
-
-  function set_total_users(uint256 _totalUsers) public {
-    total_users = _totalUsers;
-  }
-
-  // Directly mock internal functions
-
-  function do_allocate_slot(address _who) public {
-     allocate_slot(_who);
   }
 
 }

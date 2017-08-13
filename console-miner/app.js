@@ -2,7 +2,7 @@
 require("babel-polyfill");
 
 import Web3 from 'web3';
-import bitcoineum_adapter from '../build/contracts/SharkPool.json'
+import bitcoineum_adapter from '../build/contracts/GaoPool.json'
 //import EthereumBlocks from 'ethereum-blocks';
 //
 

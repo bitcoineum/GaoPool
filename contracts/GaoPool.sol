@@ -33,6 +33,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
         uint256 partial_attempt;
         uint256 balance; // Accumulated lazily evaluated balance
         bool isCreated;
+        bool isRedeemed;
     }
 
     // Each epoch represents a contract period of blocks
@@ -41,6 +42,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
         uint256 claimed_blocks;
         uint256 total_attempt;
         uint256 total_claimed;
+        uint256 actual_attempt;
         uint256 adjusted_unit;
         bool isSealed;
     }
@@ -69,6 +71,12 @@ contract GaoPool is Ownable, ReentrancyGuard {
       base_contract = BitcoineumInterface(get_bitcoineum_contract_address());
     }
 
+    function get_epoch_record(uint256 _epoch) public constant returns (uint256, uint256, uint256, uint256, uint256, uint256) {
+       epoch storage e = epochs[_epoch];
+       return (e.mined_blocks, e.claimed_blocks, e.total_attempt, e.actual_attempt, e.total_claimed, e.adjusted_unit);
+    }
+       
+
     function get_bitcoineum_contract_address() public constant returns (address) {
        return 0x73dD069c299A5d691E9836243BcaeC9c8C1D8734; // Production
        // return 0x7e7a299da34a350d04d204cd80ab51d068ad530f; // Testing
@@ -82,16 +90,21 @@ contract GaoPool is Ownable, ReentrancyGuard {
        return _externalBlockNum / blockCreationRate;
     }
 
-
     function current_epoch() constant returns (uint256) {
-        return external_to_internal_block_number(current_external_block()) / contract_period;
+       return calculate_epoch(current_external_block());
+    }
+
+    function calculate_epoch(uint256 _blockNum) constant returns (uint256) {
+        return external_to_internal_block_number(_blockNum) / contract_period;
     }
 
     function remaining_epoch_blocks(uint256 _epoch) constant public returns (uint256) {
-       uint256 _remaining = 50 - (current_external_block() - (_epoch * blockCreationRate));
-       if (_remaining < 1) {
-          return 0;
+       uint256 _epoch_intermediary = (external_to_internal_block_number(current_external_block()) - (_epoch * contract_period));
+       if (_epoch_intermediary > contract_period) {
+           return 0;
        }
+
+       uint256 _remaining = contract_period - _epoch_intermediary;
        return _remaining;
     }
 
@@ -113,14 +126,17 @@ contract GaoPool is Ownable, ReentrancyGuard {
        users[_who].epoch = _current_epoch;
        // Evenly divide the attempt over the remaining blocks in this epoch
        uint256 _current_remaining = remaining_epoch_blocks(_current_epoch);
+       LogEvent("remainng", _current_remaining);
+       LogEvent("value", _value);
        uint256 _splitAttempt = _value / _current_remaining;
        uint256 _current_epoch_attempt = _splitAttempt * _current_remaining;
        users[_who].total_attempt = _current_epoch_attempt;
        users[_who].partial_attempt = _splitAttempt;
        users[_who].isCreated = true;
+       users[_who].isRedeemed = false;
     }
 
-    function adjust_epoch(uint256 _epochNumber, uint256 _currentAttempt, uint256 _partialAttempt) {
+    function adjust_epoch(uint256 _epochNumber, uint256 _currentAttempt, uint256 _partialAttempt) internal {
         // Now that we have a user entry we need to calculate a new adjusted unit for the current and next epoch
          epochs[_epochNumber].total_attempt += _currentAttempt;
          // Adjust the unit for each attempt period
@@ -131,9 +147,15 @@ contract GaoPool is Ownable, ReentrancyGuard {
        return base_contract.currentDifficultyWei() / 10000000 * contract_period;
     }
 
+   event LogEvent(
+       string _info,
+       uint256 _extra
+   );
+
     function () payable {
      
        require(msg.value >= calculate_minimum_contribution());
+
 
        // Max bet to 
        if (msg.value > max_bet) {
@@ -147,7 +169,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
        }
 
        uint256 _current_epoch = current_epoch();
-       
        if (users[msg.sender].isCreated) {
          // The user entry exists
          // if the epoch is passed we need to roll the balance from that epoch to the user if it hasn't been done already
@@ -168,8 +189,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
             // Ok now we need to create a completely new user entry
             add_user(msg.sender, msg.value, _current_epoch);
             adjust_epoch(_current_epoch,
-                      users[msg.sender].total_attempt,
-                      users[msg.sender].partial_attempt);
+                         users[msg.sender].total_attempt,
+                         users[msg.sender].partial_attempt);
          } else {
             // We are currently in the Epoch
             // Users cannot adjust the current bet or redeem
@@ -178,11 +199,13 @@ contract GaoPool is Ownable, ReentrancyGuard {
             revert();
             }
          } else {
+
          // No entry exists for this user, so first time new attempt
          add_user(msg.sender, msg.value, _current_epoch);
          adjust_epoch(_current_epoch,
                       users[msg.sender].total_attempt,
                       users[msg.sender].partial_attempt);
+         LogEvent("Got this far", 0);
 
         }
     }
@@ -199,15 +222,24 @@ contract GaoPool is Ownable, ReentrancyGuard {
          if (owner_cut > 0) {
              base_contract.transfer(owner, owner_cut);
          }
-         base_contract.transfer(msg.sender, remainder);
+         base_contract.transfer(_who, remainder);
          users[_who].balance = 0;
+         users[_who].isRedeemed = true;
      }
-    }
+     }
 
     function redeem() external nonReentrant
     {
        uint256 _current_epoch = current_epoch();
-       if (users[msg.sender].epoch < _current_epoch) {
+       uint256 _user_epoch = users[msg.sender].epoch;
+       if (_user_epoch < _current_epoch) {
+          require(!users[msg.sender].isRedeemed);
+
+          epoch storage ep = epochs[_user_epoch];
+          uint256 _balance = calculate_proportional_reward(ep.total_claimed,
+                                                           users[msg.sender].total_attempt,
+                                                           ep.total_attempt);
+           users[msg.sender].balance += _balance;
            do_redemption(msg.sender);
         }
     }
@@ -221,9 +253,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
      // Get the current epoch information
      uint256 _epoch = current_epoch();
      epoch storage e = epochs[_epoch];
-
      if (e.adjusted_unit > 0) {
-        e.total_attempt += e.adjusted_unit;
+        e.actual_attempt += e.adjusted_unit;
         // Now we have a total contribution amount
         base_contract.mine.value(e.adjusted_unit)();
         e.mined_blocks += 1;
@@ -254,8 +285,22 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
     // External utility functions
 
-    function balanceOf(address _owner) constant returns (uint256 balance) {
-      return users[_owner].balance;
+    function balanceOf(address _addr) constant returns (uint256 balance) {
+      // We can't calculate the balance until the epoch is closed
+      // but we can provide an estimate based on the mining
+      if (users[_addr].isCreated) {
+        if (users[_addr].isRedeemed) {
+           return 0;
+        }
+        epoch storage ep = epochs[users[_addr].epoch];
+        uint256 _balance = calculate_proportional_reward(ep.total_claimed,
+                                                             users[_addr].total_attempt,
+                                                             ep.total_attempt);
+        return _balance;
+      } else {
+        // User does not exist
+        return 0;
+      }
     }
 
     function pool_set_percentage(uint8 _percentage) external nonReentrant onlyOwner {
@@ -278,7 +323,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
     function find_contribution(address _who) constant external returns (uint256, uint256, uint256, uint256) {
     user storage u = users[_who];
     if (u.isCreated) {
-       return (u.epoch, u.total_attempt, u.partial_attempt, u.balance);
+       return (u.epoch, u.partial_attempt, u.total_attempt, u.balance);
     } else {
       return (0,0,0,0);
       }

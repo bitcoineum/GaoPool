@@ -1,5 +1,5 @@
-var SharkPool = artifacts.require("./SharkPool.sol");
+var GaoPool = artifacts.require("./GaoPool.sol");
 
 module.exports = function(deployer) {
-    deployer.deploy(SharkPool);
+    deployer.deploy(GaoPool);
 };
