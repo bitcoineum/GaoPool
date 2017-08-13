@@ -1,0 +1,15 @@
+GaoPool is an epoch based unlimited pool miner
+Contract periods are divided into epochs where users can make single bets
+An unlimited number of accounts can make a single bet good for the remaining duration of the contract
+Subsequent bets after the epoch has closed will redeem mined bte, the redeem function can also be called after the epoch closed
+
+
+The pool needs to be triggered externally by a vps script
+
+npm compile
+npm run mine
+
+You may need to:
+mkdir -p build/contracts/
+cp -pr release/08-06-2017/* build/contracts/
+
