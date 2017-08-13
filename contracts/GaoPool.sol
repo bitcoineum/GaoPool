@@ -110,61 +110,61 @@ contract GaoPool is Ownable, ReentrancyGuard {
        return _remaining;
     }
 
-   function calculate_proportional_reward(uint256 _baseReward, uint256 _userContributionWei, uint256 _totalCommittedWei) public constant returns (uint256) {
-       require(_userContributionWei <= _totalCommittedWei);
-       require(_userContributionWei > 0);
-       require(_totalCommittedWei > 0);
-       uint256 intermediate = ((_userContributionWei * divisible_units) / _totalCommittedWei);
+    function calculate_proportional_reward(uint256 _baseReward, uint256 _userContributionWei, uint256 _totalCommittedWei) public constant returns (uint256) {
+        require(_userContributionWei <= _totalCommittedWei);
+        require(_userContributionWei > 0);
+        require(_totalCommittedWei > 0);
+        uint256 intermediate = ((_userContributionWei * divisible_units) / _totalCommittedWei);
 
-       if (intermediate >= divisible_units) {
-          return _baseReward;
-       } else {
-          return intermediate * (_baseReward / divisible_units);
-       }
+        if (intermediate >= divisible_units) {
+            return _baseReward;
+        } else {
+            return intermediate * (_baseReward / divisible_units);
+        }
     }
 
-
     function add_user(address _who, uint256 _value, uint256 _current_epoch) internal {
-       uint256 _current_blocknum = external_to_internal_block_number(current_external_block());
-       uint256 adjustment = 0;
-       if (_current_blocknum == last_mined_block) {
-         adjustment = 1;
-       }
-       users[_who].epoch = _current_epoch;
-       // Evenly divide the attempt over the remaining blocks in this epoch
-       uint256 _current_remaining = remaining_epoch_blocks(_current_epoch);
-       // This is a race condition on mining
-       if (_current_remaining > 0) {
-          _current_remaining -= adjustment;
-       }
-       uint256 _splitAttempt = _value / _current_remaining;
-       uint256 _current_epoch_attempt = _splitAttempt * _current_remaining;
-       users[_who].total_attempt = _current_epoch_attempt;
-       users[_who].partial_attempt = _splitAttempt;
-       users[_who].isCreated = true;
-       users[_who].isRedeemed = false;
+        uint256 _current_blocknum = external_to_internal_block_number(current_external_block());
+        uint256 adjustment = 0;
+        if (_current_blocknum == last_mined_block) {
+            adjustment = 1;
+        }
+
+        users[_who].epoch = _current_epoch;
+        // Evenly divide the attempt over the remaining blocks in this epoch
+        uint256 _current_remaining = remaining_epoch_blocks(_current_epoch);
+        // This is a race condition on mining
+        if (_current_remaining > 0) {
+            _current_remaining -= adjustment;
+        }
+        uint256 _splitAttempt = _value / _current_remaining;
+        uint256 _current_epoch_attempt = _splitAttempt * _current_remaining;
+
+        users[_who].total_attempt = _current_epoch_attempt;
+        users[_who].partial_attempt = _splitAttempt;
+        users[_who].isCreated = true;
+        users[_who].isRedeemed = false;
     }
 
     function adjust_epoch(uint256 _epochNumber, uint256 _currentAttempt, uint256 _partialAttempt) internal {
         // Now that we have a user entry we need to calculate a new adjusted unit for the current and next epoch
-         epochs[_epochNumber].total_attempt += _currentAttempt;
-         // Adjust the unit for each attempt period
-         epochs[_epochNumber].adjusted_unit += _partialAttempt;
+        epochs[_epochNumber].total_attempt += _currentAttempt;
+        // Adjust the unit for each attempt period
+        epochs[_epochNumber].adjusted_unit += _partialAttempt;
     }
 
     function calculate_minimum_contribution() public constant returns (uint256)  {
-       return base_contract.currentDifficultyWei() / 10000000 * contract_period;
+        return base_contract.currentDifficultyWei() / 10000000 * contract_period;
     }
 
-   event LogEvent(
-       string _info,
-       uint256 _extra
-   );
+    event LogEvent(
+        string _info,
+        uint256 _extra
+    );
 
     function () payable {
      
        require(msg.value >= calculate_minimum_contribution());
-
 
        // Max bet to 
        if (msg.value > max_bet) {
@@ -177,46 +177,43 @@ contract GaoPool is Ownable, ReentrancyGuard {
            revert();
        }
 
-
        uint256 _current_epoch = current_epoch();
 
        if (users[msg.sender].isCreated) {
-         // The user entry exists
-         // if the epoch is passed we need to roll the balance from that epoch to the user if it hasn't been done already
-         // and treat it like a new epoch
-         // We check for previous epoch and leeway into next epoch to prevent race condition on claim
-         if (users[msg.sender].epoch < _current_epoch && (remaining_epoch_blocks(users[msg.sender].epoch+1) < 98)) {
-            // The user's last betting period is over
-            // Let's add to the user's balance
-            epoch storage ep = epochs[users[msg.sender].epoch];
-            uint256 _balance = calculate_proportional_reward(ep.total_claimed,
-                                                             users[msg.sender].total_attempt,
-                                                             ep.total_attempt);
-            users[msg.sender].balance += _balance;
+            // The user entry exists
+            // if the epoch is passed we need to roll the balance from that epoch to the user if it hasn't been done already
+            // and treat it like a new epoch
+            // We check for previous epoch and leeway into next epoch to prevent race condition on claim
+            if (users[msg.sender].epoch < _current_epoch && (remaining_epoch_blocks(users[msg.sender].epoch+1) < 98)) {
+                // The user's last betting period is over
+                // Let's add to the user's balance
+                epoch storage ep = epochs[users[msg.sender].epoch];
+                uint256 _balance = calculate_proportional_reward(ep.total_claimed,
+                                                                users[msg.sender].total_attempt,
+                                                                ep.total_attempt);
+                users[msg.sender].balance += _balance;
 
-            // Let's redeem the users balance
-            do_redemption(msg.sender);
+                // Let's redeem the users balance
+                do_redemption(msg.sender);
 
-            // Ok now we need to create a completely new user entry
+                // Ok now we need to create a completely new user entry
+                add_user(msg.sender, msg.value, _current_epoch);
+                adjust_epoch(_current_epoch,
+                            users[msg.sender].total_attempt,
+                            users[msg.sender].partial_attempt);
+            } else {
+                // We are currently in the Epoch
+                // Users cannot adjust the current bet or redeem
+                // This is just to keep the code simple in this version of GaoPool
+                // Additional bets can bet made on other accounts
+                revert();
+            }
+        } else {
+            // No entry exists for this user, so first time new attempt
             add_user(msg.sender, msg.value, _current_epoch);
             adjust_epoch(_current_epoch,
                          users[msg.sender].total_attempt,
                          users[msg.sender].partial_attempt);
-         } else {
-            // We are currently in the Epoch
-            // Users cannot adjust the current bet or redeem
-            // This is just to keep the code simple in this version of GaoPool
-            // Additional bets can bet made on other accounts
-            revert();
-            }
-         } else {
-
-         // No entry exists for this user, so first time new attempt
-         add_user(msg.sender, msg.value, _current_epoch);
-         adjust_epoch(_current_epoch,
-                      users[msg.sender].total_attempt,
-                      users[msg.sender].partial_attempt);
-
         }
     }
 
@@ -225,129 +222,118 @@ contract GaoPool is Ownable, ReentrancyGuard {
     }
 
     function do_redemption(address _who) internal {
-      uint256 balance = users[_who].balance;
-      if (balance > 0) {
-         uint256 owner_cut = (balance / 100) * pool_percentage;
-         uint256 remainder = balance - owner_cut;
-         if (owner_cut > 0) {
-             base_contract.transfer(owner, owner_cut);
-         }
-         base_contract.transfer(_who, remainder);
-         users[_who].balance = 0;
-         users[_who].isRedeemed = true;
-     }
-     }
-
-    function redeem() external nonReentrant
-    {
-       uint256 _current_epoch = current_epoch();
-       uint256 _user_epoch = users[msg.sender].epoch;
-       if (_user_epoch < _current_epoch && (remaining_epoch_blocks(_user_epoch+1) < 98) ) {
-          require(!users[msg.sender].isRedeemed);
-
-          epoch storage ep = epochs[_user_epoch];
-          uint256 _balance = calculate_proportional_reward(ep.total_claimed,
-                                                           users[msg.sender].total_attempt,
-                                                           ep.total_attempt);
-           users[msg.sender].balance += _balance;
-           do_redemption(msg.sender);
+        uint256 balance = users[_who].balance;
+        if (balance > 0) {
+            uint256 owner_cut = (balance / 100) * pool_percentage;
+            uint256 remainder = balance - owner_cut;
+            if (owner_cut > 0) {
+                base_contract.transfer(owner, owner_cut);
+            }
+            base_contract.transfer(_who, remainder);
+            users[_who].balance = 0;
+            users[_who].isRedeemed = true;
         }
     }
 
-    function mine() external nonReentrant
-    {
-     // Did someone already try to mine this block?
-     uint256 _blockNum = external_to_internal_block_number(current_external_block());
-     require(!base_contract.checkMiningAttempt(_blockNum, this));
+    function redeem() external nonReentrant {
+        uint256 _current_epoch = current_epoch();
+        uint256 _user_epoch = users[msg.sender].epoch;
+        if (_user_epoch < _current_epoch && (remaining_epoch_blocks(_user_epoch+1) < 98) ) {
+            require(!users[msg.sender].isRedeemed);
 
-     // Get the current epoch information
-     uint256 _epoch = current_epoch();
-     epoch storage e = epochs[_epoch];
-     if (e.adjusted_unit > 0) {
-        e.actual_attempt += e.adjusted_unit;
-        // Now we have a total contribution amount
-        base_contract.mine.value(e.adjusted_unit)();
-        e.mined_blocks += 1;
-     }
-     last_mined_block = _blockNum;
-
+            epoch storage ep = epochs[_user_epoch];
+            uint256 _balance = calculate_proportional_reward(ep.total_claimed,
+                                                             users[msg.sender].total_attempt,
+                                                             ep.total_attempt);
+            users[msg.sender].balance += _balance;
+            do_redemption(msg.sender);
+        }
     }
 
-   function claim(uint256 _blockNumber, address forCreditTo)
-                  nonReentrant
-                  external returns (bool) {
+    function mine() external nonReentrant {
+        // Did someone already try to mine this block?
+        uint256 _blockNum = external_to_internal_block_number(current_external_block());
+        require(!base_contract.checkMiningAttempt(_blockNum, this));
 
-                  // Did we win the block in question
-                  require(base_contract.checkWinning(_blockNumber));
+        // Get the current epoch information
+        uint256 _epoch = current_epoch();
+        epoch storage e = epochs[_epoch];
+        if (e.adjusted_unit > 0) {
+            e.actual_attempt += e.adjusted_unit;
+            // Now we have a total contribution amount
+            base_contract.mine.value(e.adjusted_unit)();
+            e.mined_blocks += 1;
+        }
+        last_mined_block = _blockNum;
+    }
 
-                  uint256 initial_balance = base_contract.balanceOf(this);
+    function claim(uint256 _blockNumber, address forCreditTo) nonReentrant external returns (bool) {
+        // Did we win the block in question
+        require(base_contract.checkWinning(_blockNumber));
 
-                  // We won let's get our reward
-                  base_contract.claim(_blockNumber, this);
+        uint256 initial_balance = base_contract.balanceOf(this);
 
-                  uint256 balance = base_contract.balanceOf(this);
+        // We won let's get our reward
+        base_contract.claim(_blockNumber, this);
 
-                  // What Epoch does this block fall into
-                  uint256 _epoch = bte_block_to_epoch(_blockNumber);
-                  epoch storage e = epochs[_epoch];
-                  e.total_claimed += (balance - initial_balance);
-                  e.claimed_blocks += 1;
+        uint256 balance = base_contract.balanceOf(this);
+
+        // What Epoch does this block fall into
+        uint256 _epoch = bte_block_to_epoch(_blockNumber);
+        epoch storage e = epochs[_epoch];
+        e.total_claimed += (balance - initial_balance);
+        e.claimed_blocks += 1;
     }
 
     // External utility functions
 
     function balanceOf(address _addr) constant returns (uint256 balance) {
-      // We can't calculate the balance until the epoch is closed
-      // but we can provide an estimate based on the mining
-      if (users[_addr].isCreated) {
-        if (users[_addr].isRedeemed) {
-           return 0;
-        }
-        epoch storage ep = epochs[users[_addr].epoch];
-        uint256 _balance = calculate_proportional_reward(ep.total_claimed,
+        // We can't calculate the balance until the epoch is closed
+        // but we can provide an estimate based on the mining
+        if (users[_addr].isCreated) {
+            if (users[_addr].isRedeemed) {
+                return 0;
+            }
+            epoch storage ep = epochs[users[_addr].epoch];
+            uint256 _balance = calculate_proportional_reward(ep.total_claimed,
                                                              users[_addr].total_attempt,
                                                              ep.total_attempt);
-        return _balance;
-      } else {
-        // User does not exist
-        return 0;
-      }
+            return _balance;
+        } else {
+            // User does not exist
+            return 0;
+        }
     }
 
     function pool_set_percentage(uint8 _percentage) external nonReentrant onlyOwner {
-       // Just in case owner is compromised
-       require(_percentage < max_pool_percentage);
-       pool_percentage = _percentage;
+        // Just in case owner is compromised
+        require(_percentage < max_pool_percentage);
+        pool_percentage = _percentage;
     }
 
     function pool_set_paused(bool _paused) external nonReentrant onlyOwner {
-       isPaused = _paused;
+        isPaused = _paused;
     }
 
     function pool_set_max_bet(uint256 _value) external nonReentrant onlyOwner {
-       max_bet = _value;
+        max_bet = _value;
     }
-
-
-
 
     function find_contribution(address _who) constant external returns (uint256, uint256, uint256, uint256) {
-    user storage u = users[_who];
-    if (u.isCreated) {
-       return (u.epoch, u.partial_attempt, u.total_attempt, u.balance);
-    } else {
-      return (0,0,0,0);
-      }
+        user storage u = users[_who];
+        if (u.isCreated) {
+            return (u.epoch, u.partial_attempt, u.total_attempt, u.balance);
+        } else {
+            return (0,0,0,0);
+        }
     }
 
-   function checkMiningAttempt(uint256 _blockNum, address _sender) constant public returns (bool) {
-      return base_contract.checkMiningAttempt(_blockNum, _sender);
-   }
-   
-   function checkWinning(uint256 _blockNum) constant public returns (bool) {
-     return base_contract.checkWinning(_blockNum);
-   }
-
-
+    function checkMiningAttempt(uint256 _blockNum, address _sender) constant public returns (bool) {
+        return base_contract.checkMiningAttempt(_blockNum, _sender);
+    }
+    
+    function checkWinning(uint256 _blockNum) constant public returns (bool) {
+        return base_contract.checkWinning(_blockNum);
+    }
 
 }
