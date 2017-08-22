@@ -195,7 +195,10 @@ contract GaoPool is Ownable, ReentrancyGuard {
             users[msg.sender].balance += _balance;
 
             // Let's redeem the users balance
-            do_redemption(msg.sender);
+            // If the user is already redeemed, skip this and refresh the user for the new epoch
+            if (!users[msg.sender].isRedeemed) {
+               do_redemption(msg.sender);
+            }
 
             // Ok now we need to create a completely new user entry
             add_user(msg.sender, msg.value, _current_epoch);
