@@ -22,6 +22,10 @@ contract GaoPoolMock is GaoPool {
      current_block = _blockNumber;
   }
 
+  function set_mine_attempts(uint256 _attempts) {
+     total_mine_attempts = _attempts;
+  }
+
   function get_bitcoineum_contract_address() public constant returns (address) {
      return bitcoineum_contract_address;
   }

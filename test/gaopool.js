@@ -108,8 +108,8 @@ contract('GaoPoolTest', function(accounts) {
   });
 
 
-  // Starts with static element testing for constants and setup
-
+//  // Starts with static element testing for constants and setup
+//
    it("should correctly deploy a miner and an attached bte contract", async function() {
    	  let miner = await setup_miner();
    });
@@ -156,46 +156,43 @@ contract('GaoPoolTest', function(accounts) {
   	  assert.equal(res.toString(), maxint.dividedToIntegerBy(50).toString(), "External block maxint should be window maxint divided by 50");
   });
 
-  it("should calculate the epoch based on the external ethereum block", async function() {
+  it("should calculate the epoch based on the total number of mining attempts", async function() {
   	  let miner = await setup_miner();
   	  let res = await miner.calculate_epoch(0);
   	  assert.equal(res.valueOf(), 0, "External block 0 should be epoch 0");
-  	  for (var i=0; i < 5000; i+=50) {
-  	    res = await miner.calculate_epoch(5000+i)
-  	    assert.equal(res.valueOf(), 1, "External block 5000 to 9999 should be epoch 1");
+  	  for (var i=0; i < 1000; i+=100) {
+  	    res = await miner.calculate_epoch(i)
+  	    assert.equal(res.valueOf(), i/100, "Mining attempts are divided by contract period");
       }
   	    res = await miner.calculate_epoch(10000)
-  	    assert.equal(res.valueOf(), 2, "External block 10000 should be epoch 2");
+  	    assert.equal(res.valueOf(), 100, "Mining attempt 10000 should be epoch 100");
   	  res = await miner.calculate_epoch(maxint);
-  	  assert.equal(res.toString(), maxint.dividedToIntegerBy(50).dividedToIntegerBy(100).toString(), "External block should be divided by 50 and then broken into 100 block contracts");
+  	  assert.equal(res.toString(), maxint.dividedToIntegerBy(100).toString(), "Mining attempts should be divided by 100");
   });
 
 
   it("should calculate remaining blocks in an epoch correctly", async function() {
 
       let miner = await setup_miner();
-      await miner.set_block(0);
-      let res = await miner.remaining_epoch_blocks(0); 
+      await miner.set_mine_attempts(0);
+      let res = await miner.remaining_epoch_blocks(); 
       assert.equal(res.valueOf(), 100);
-      for (var i=0; i<5000; i+=50) {
-          await miner.set_block(i);
-          let res = await miner.remaining_epoch_blocks(0)
-          assert.equal(res.valueOf(), 100 - (i/50));
+      for (var i=0; i<100; i+=1) {
+          await miner.set_mine_attempts(i);
+          let res = await miner.remaining_epoch_blocks()
+          assert.equal(res.valueOf(), 100-i);
       }
 
-      for (var i=20000; i<25000; i+=50) {
-          await miner.set_block(i);
-          let res = await miner.remaining_epoch_blocks(4)
-          assert.equal(res.valueOf(), (25000 - i)/50);
+      for (var i=500; i<600; i+=1) {
+          await miner.set_mine_attempts(i);
+          let res = await miner.remaining_epoch_blocks()
+          assert.equal(res.valueOf(), 100-(i-500));
       }
 
-      await miner.set_block(25001);
-      res = await miner.remaining_epoch_blocks(5);
-      assert.equal(res.valueOf(), 100);
 
-      res = await miner.remaining_epoch_blocks(2);
-      assert.equal(res.valueOf(), 0);
-
+      await miner.set_mine_attempts(25001);
+      res = await miner.remaining_epoch_blocks();
+      assert.equal(res.valueOf(), 99);
   });
 
 
@@ -230,13 +227,12 @@ contract('GaoPoolTest', function(accounts) {
 
    it("should allow me to add a contribution to the pool", async function() {
        let miner = await setup_miner();
-       await miner.set_block(5000); // 2nd epoch (1st block)
-       let res = await miner.remaining_epoch_blocks(5000); 
+       await miner.set_mine_attempts(100); // 2nd epoch (1st block)
        await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '200000'});
-       res = await miner.find_contribution(accounts[0]);
+       var res = await miner.find_contribution(accounts[0]);
        assert.equal(res[0].valueOf(), 1);
        assert.equal(res[1].toString(), '10000000');
-       assert.equal(res[2].toString(), '1000000000');
+       assert.equal(res[2].toString(), '0');
        assert.equal(res[3].valueOf(), 0);
    });
  
@@ -263,15 +259,15 @@ contract('GaoPoolTest', function(accounts) {
  
        let res = await miner.find_contribution(accounts[0]);
        assert.equal(res[1].toString(), '10000000');
-       assert.equal(res[2].toString(), '1000000000');
+       assert.equal(res[2].toString(), '0');
  
        res = await miner.find_contribution(accounts[1]);
        assert.equal(res[1].toString(), '10000000');
-       assert.equal(res[2].toString(), '1000000000');
+       assert.equal(res[2].toString(), '0');
 
        res = await miner.find_contribution(accounts[7]);
        assert.equal(res[1].toString(), '40000000');
-       assert.equal(res[2].toString(), '4000000000');
+       assert.equal(res[2].toString(), '0');
    });
 
    it("should not allow multiple contributions during the same epoch for a single account", async function() {
@@ -306,13 +302,11 @@ contract('GaoPoolTest', function(accounts) {
  	let res = await miner.get_epoch_record(0);
  	let mined_blocks = res[0];
  	let claimed_blocks = res[1];
- 	let total_attempt = res[2];
- 	let actual_attempt = res[3];
- 	let total_claimed = res[4];
- 	let adjusted_unit = res[5];
+ 	let actual_attempt = res[2];
+ 	let total_claimed = res[3];
+ 	let adjusted_unit = res[4];
  	assert.equal(mined_blocks, 1);
  	assert.equal(claimed_blocks, 0);
- 	assert.equal(total_attempt.valueOf(), 1000000000);
  	assert.equal(actual_attempt.valueOf(), 10000000);
  	assert.equal(total_claimed, 0);
  	assert.equal(adjusted_unit.valueOf(), 10000000);
@@ -349,11 +343,11 @@ contract('GaoPoolTest', function(accounts) {
      let attempt = await miner.checkWinning(0); 
      assert.isFalse(attempt);
  });
- 
+
  it("should return true for checkWinning when we have won a mature block", async function() {
      let miner = await setup_miner();
      // This exhausts the minimum difficulty over 100 block period
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '150000'});
+     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
      await miner.mine({gas: '400000'});
  
      // Fast forward
@@ -369,7 +363,7 @@ contract('GaoPoolTest', function(accounts) {
  it("should allow claim on won mature block and have full block", async function() {
      let miner = await setup_miner();
      // This exhausts the minimum difficulty over 100 block period
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '150000'});
+     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
      await miner.mine({gas: '400000'});
  
      // Fast forward
@@ -379,7 +373,7 @@ contract('GaoPoolTest', function(accounts) {
  	assert.equal(balance.valueOf(), 0);
  
      // Account is ignored, but maintains interface compat with BTE.
- 	await miner.claim(0, accounts[0], {gas: '200000'});
+ 	await miner.claim(0, accounts[0], {gas: '400000'});
  
  	// This should have distributed the entire BTE block to the sole miner in the pool	
  
@@ -390,47 +384,47 @@ contract('GaoPoolTest', function(accounts) {
  	assert.equal(remaining_pool_balance.valueOf(), 100*(10**8));
  
  });
- 
- it("multiple pool miners should split reward", async function() {
-     let miner = await setup_miner();
-     // This exhausts the minimum difficulty over 100 block period
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '150000'});
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '150000'});
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[2], gas: '150000'});
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[3], gas: '150000'});
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[4], gas: '150000'});
-     await miner.mine({gas: '400000'});
- 
-     // Fast forward
- 	await bte_instance.set_block(51);
- 
-     // Account is ignored, but maintains interface compat with BTE.
- 	await miner.claim(0, accounts[0], {gas: '800000'});
- 
- 	// This should have distributed the entire BTE block to the sole miner in the pool	
- 
-     let balance = await miner.balanceOf(accounts[0]);
- 	assert.equal(balance.valueOf(), 20*(10**8));
- 
- 
-     balance = await miner.balanceOf(accounts[1]);
- 	assert.equal(balance.valueOf(), 20*(10**8));
- 
-     balance = await miner.balanceOf(accounts[2]);
- 	assert.equal(balance.valueOf(), 20*(10**8));
- 
-     balance = await miner.balanceOf(accounts[3]);
- 	assert.equal(balance.valueOf(), 20*(10**8));
- 
-     balance = await miner.balanceOf(accounts[4]);
- 	assert.equal(balance.valueOf(), 20*(10**8));
- 
- 	let remaining_pool_balance = await bte_instance.balanceOf(miner.address);
- 	assert.equal(remaining_pool_balance.valueOf(), 100 * (10**8));
- 
- });
- 
- 
+
+  it("multiple pool miners should split reward", async function() {
+      let miner = await setup_miner();
+      // This exhausts the minimum difficulty over 100 block period
+      await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '150000'});
+      await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '150000'});
+      await miner.sendTransaction({value: '10000000000000000', from: accounts[2], gas: '150000'});
+      await miner.sendTransaction({value: '10000000000000000', from: accounts[3], gas: '150000'});
+      await miner.sendTransaction({value: '10000000000000000', from: accounts[4], gas: '150000'});
+      await miner.mine({gas: '400000'});
+  
+      // Fast forward
+  	await bte_instance.set_block(51);
+  
+      // Account is ignored, but maintains interface compat with BTE.
+  	await miner.claim(0, accounts[0], {gas: '800000'});
+  
+  	// This should have distributed the entire BTE block to the sole miner in the pool	
+  
+      let balance = await miner.balanceOf(accounts[0]);
+  	assert.equal(balance.valueOf(), 20*(10**8));
+  
+  
+      balance = await miner.balanceOf(accounts[1]);
+  	assert.equal(balance.valueOf(), 20*(10**8));
+  
+      balance = await miner.balanceOf(accounts[2]);
+  	assert.equal(balance.valueOf(), 20*(10**8));
+  
+      balance = await miner.balanceOf(accounts[3]);
+  	assert.equal(balance.valueOf(), 20*(10**8));
+  
+      balance = await miner.balanceOf(accounts[4]);
+  	assert.equal(balance.valueOf(), 20*(10**8));
+  
+  	let remaining_pool_balance = await bte_instance.balanceOf(miner.address);
+  	assert.equal(remaining_pool_balance.valueOf(), 100 * (10**8));
+  
+  });
+
+
  it("multiple pool miners should split rounded reward on odd participants", async function() {
      let miner = await setup_miner();
      // This exhausts the minimum difficulty over 100 block period
@@ -473,22 +467,27 @@ contract('GaoPoolTest', function(accounts) {
  	assert.equal(remaining_pool_balance.valueOf(), 100 * (10**8) );
  
  });
- 
+
  it("multiple pool miners should split rounded reward on odd participants", async function() {
      let miner = await setup_miner();
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '150000'});
-     await miner.sendTransaction({value: '30000000000000000', from: accounts[1], gas: '150000'});
+     // Miner needs to be at end of window 
+     await miner.set_mine_attempts(99);
+     
+     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+     await miner.sendTransaction({value: '30000000000000000', from: accounts[1], gas: '200000'});
      await miner.mine({gas: '400000'});
  
      // Fast forward
  	await bte_instance.set_block(51);
+    // await miner.set_mine_attempts(201);
  
      // Account is ignored, but maintains interface compat with BTE.
  	await miner.claim(0, accounts[0], {gas: '300000'});
  
  	// This should have distributed the entire BTE block to the sole miner in the pool	
  	// The mining pool now owns the content
- 
+
+
      let balance = await bte_instance.balanceOf(miner.address);
      assert.equal(balance.valueOf(), 100*(10**8));
  
@@ -498,20 +497,19 @@ contract('GaoPoolTest', function(accounts) {
      balance = await miner.balanceOf(accounts[1]);
   	 assert.equal(balance.valueOf(), 75*(10**8));
  
-  	// Now redeem
+    // Fast forward the contract mining attempt window
+  	// Now redeem, redemption is done via a 0 ether transaction to the pool
  
-  	await miner.redeem({from: accounts[0]});
+    await miner.sendTransaction({value: '0', from: accounts[0], gas: '500000'});
 
-  	// You cannot redeem in GaoPool during the same Epoch, funds are locked until the contract period has expired.
- 
   	balance = await bte_instance.balanceOf(accounts[0]);
-  	assert.equal(balance.valueOf(), 0);
+  	assert.equal(balance.valueOf(), 25*(10**8));
 
     balance = await miner.balanceOf(accounts[0]);
-    assert.equal(balance.valueOf(), 25*(10**8));
+    assert.equal(balance.valueOf(), 0);
  
  	let remaining_pool_balance = await bte_instance.balanceOf(miner.address);
- 	assert.equal(remaining_pool_balance.valueOf(), 100*(10**8));
+ 	assert.equal(remaining_pool_balance.valueOf(), 75*(10**8));
  
  });
 
@@ -519,8 +517,8 @@ contract('GaoPoolTest', function(accounts) {
     let miner = await setup_miner();
     // This exhausts the minimum difficulty over 100 block period
  
-    await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '150000'});
-    await miner.sendTransaction({value: '30000000000000000', from: accounts[1], gas: '150000'});
+    await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+    await miner.sendTransaction({value: '30000000000000000', from: accounts[1], gas: '200000'});
  
     for (var i=1; i<101; i++) {
         await miner.mine({gas: '400000'});
@@ -557,7 +555,7 @@ contract('GaoPoolTest', function(accounts) {
  
  });
 
- it("should allow forward balance adjustments at any time", async function() {
+ it("should project accurate balance approximation", async function() {
      let miner = await setup_miner();
      // This exhausts the minimum difficulty over 100 block period
  
@@ -598,7 +596,7 @@ contract('GaoPoolTest', function(accounts) {
  
       let res = await miner.find_contribution(accounts[0]);
       assert.equal(res[1].toString(), '100000000000000'); 
-      assert.equal(res[2].toString(), '10000000000000000'); 
+      assert.equal(res[2].toString(), '5000000000000000'); 
   });
 
 
@@ -607,13 +605,13 @@ contract('GaoPoolTest', function(accounts) {
      let miner = await setup_miner();
  
      for (var i=0; i<300; i++) {
-         await miner.sendTransaction({value: '10000000000000000', from: accounts[i], gas: '150000'});
+         await miner.sendTransaction({value: '10000000000000000', from: accounts[i], gas: '200000'});
      }
  
      // Adding another miner will fail
  
      try {
-         await miner.sendTransaction({value: '10000000000000000', from: accounts[290], gas: '150000'});
+         await miner.sendTransaction({value: '10000000000000000', from: accounts[290], gas: '200000'});
      } catch(error) {
          assertJump(error);
      }
@@ -641,8 +639,8 @@ contract('GaoPoolTest', function(accounts) {
      }
  
  });
- 
- it("should distribute a percentage of the pool on redemption", async function() {
+
+ it("should fail to redeem within the user's active epoch", async function() {
      let miner = await setup_miner();
      await miner.pool_set_percentage(5);
      // This exhausts the minimum difficulty over 100 block period
@@ -663,16 +661,34 @@ contract('GaoPoolTest', function(accounts) {
     // Redemption will fail while in the same epoch
 
     try {
-        await miner.redeem({from: accounts[1]});
+        await miner.sendTransaction({value: '0', from: accounts[1], gas: '500000'});
     } catch(error) {
         assertJump(error)
     }
+ });
 
-    // Let's fast forward
-    await miner.set_block(20000);
+ 
+ it("should distribute a percentage of the pool on redemption", async function() {
+     let miner = await setup_miner();
+     await miner.pool_set_percentage(5);
+     // This exhausts the minimum difficulty over 100 block period
+     await miner.set_mine_attempts(99);
+     await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '150000'});
+     await miner.mine({gas: '400000'});
+ 
+     // Fast forward
+ 	await bte_instance.set_block(51);
+ 
+     // Account is ignored, but maintains interface compat with BTE.
+ 	await miner.claim(0, accounts[1], {gas: '300000'});
+ 
+ 	// This should have distributed the entire BTE block to the sole miner in the pool	
+ 
+     let balance = await miner.balanceOf(accounts[1]);
+ 	assert.equal(balance.valueOf(), 100*(10**8));
 
     // Now it will succeed
-    await miner.redeem({from: accounts[1]});
+    await miner.sendTransaction({value: '0', from: accounts[1], gas: '500000'});
  
  	balance = await miner.balanceOf(accounts[1]);
  	assert.equal(balance.valueOf(), 0);
@@ -687,5 +703,42 @@ contract('GaoPoolTest', function(accounts) {
  
  });
 
-});
+   it("should not allow multiple bet redemptions", async function() {
+     let miner = await setup_miner();
+     await miner.set_mine_attempts(99);
+     await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '150000'});
+     await miner.mine({gas: '400000'});
+ 
+     // Fast forward
+ 	await bte_instance.set_block(51);
+ 
+     // Account is ignored, but maintains interface compat with BTE.
+ 	await miner.claim(0, accounts[1], {gas: '300000'});
+ 
+ 	// This should have distributed the entire BTE block to the sole miner in the pool	
+ 
+     let balance = await miner.balanceOf(accounts[1]);
+ 	assert.equal(balance.valueOf(), 100*(10**8));
 
+    // This should result in a redemption
+    await miner.sendTransaction({value: '0', from: accounts[1], gas: '500000'});
+
+ 	balance = await miner.balanceOf(accounts[1]);
+ 	assert.equal(balance.valueOf(), 0);
+
+ 	balance = await bte_instance.balanceOf(accounts[1]);
+ 	assert.equal(balance.valueOf(), 100*(10**8));
+
+    // Second redemption via function should fail
+    try {
+        await miner.sendTransaction({value: '0', from: accounts[1], gas: '500000'});
+    }catch (error) {
+        assertJump(error);
+    }
+ 
+ 	balance = await miner.balanceOf(accounts[1]);
+ 	assert.equal(balance.valueOf(), 0);
+ 
+ });
+
+});
