@@ -345,12 +345,16 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
     function total_contribution_for_epoch_remaining(address _who) constant internal returns (uint256) {
       user memory u = users[_who];
+      if (u.epoch != current_epoch()) {
+          return 0;
+      }
+
       uint256 _remaining_blocks;
-      if (total_mine_attempts < 101) {
-         _remaining_blocks = 100 - total_mine_attempts;
+      if (total_mine_attempts < contract_period) {
+         _remaining_blocks = contract_period - total_mine_attempts;
       } else {
-         if ((total_mine_attempts % 100) == 0) {
-            _remaining_blocks = 0;
+         if ((total_mine_attempts % contract_period) == 0) {
+            _remaining_blocks = contract_period;
          } else {
            _remaining_blocks = (contract_period - (total_mine_attempts % 100));
          }
@@ -366,7 +370,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
                  u.partial_attempt,
                  total_contribution_for_epoch(_who),
                  total_contribution_for_epoch_remaining(_who),
-                 u.balance);
+                 balanceOf(_who));
       } else {
         return (0,0,0,0,0);
         }

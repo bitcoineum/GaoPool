@@ -233,7 +233,7 @@ contract('GaoPoolTest', function(accounts) {
        assert.equal(res[0].valueOf(), 1);
        assert.equal(res[1].toString(), '10000000');
        assert.equal(res[2].toString(), '0');
-       assert.equal(res[3].valueOf(), 0);
+       assert.equal(res[3].valueOf(), 1000000000);
    });
  
    it("should return zeros when a contribution does not exist", async function() {
@@ -284,6 +284,37 @@ contract('GaoPoolTest', function(accounts) {
        assert.equal(res[2].toString(), '0');
        assert.equal(res[3].toString(), '2000000000');
    });
+
+   it("should accurately reflect balance across epochs", async function() {
+       let miner = await setup_miner();
+       await miner.set_mine_attempts(99);
+       await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+       let res = await miner.find_contribution(accounts[0]);
+       assert.equal(res[2].toString(), '0');
+       assert.equal(res[3].toString(), '10000000000000000');
+       assert.equal(res[4].valueOf(), 0); 
+
+       await miner.mine({gas: '400000'});
+
+       await bte_instance.set_block(51);
+       await miner.set_block(51);
+       await miner.claim(0, accounts[0], {gas: '300000'});
+       // Epoch Boundary
+       res = await miner.find_contribution(accounts[0]);
+       assert.equal(res[0].valueOf(), 0);
+       assert.equal(res[2].toString(), '10000000000000000');
+       assert.equal(res[3].valueOf(), 0);
+       assert.equal(res[4].valueOf(), 100*(10**8)); 
+       
+       await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+
+       // This should result in a contribution balance adjustment
+       res = await miner.find_contribution(accounts[0]);
+       assert.equal(res[0].valueOf(), 1);
+       assert.equal(res[2].valueOf(), 0);
+       assert.equal(res[3].valueOf(), 10000000000000000);
+   });
+
  
   it("should mine 100 consecutive blocks", async function() {
      let miner = await setup_miner();
@@ -305,7 +336,7 @@ contract('GaoPoolTest', function(accounts) {
          assert.equal(res[1].valueOf(), 100000000000000);
          assert.equal(res[2].valueOf(), 100000000000000 * i);
          assert.equal(res[3].valueOf(), 10000000000000000 - (100000000000000 * i));
-         assert.equal(res[4].valueOf(), 0);
+         assert.equal(res[4].valueOf(), ((i-1)*100)*(10**8));
 
          let epoch_record = await miner.get_epoch_record(0);
 
