@@ -667,39 +667,47 @@ contract('GaoPoolTest', function(accounts) {
     }
  });
 
- 
- it("should distribute a percentage of the pool on redemption", async function() {
+it("should let us change the ace bank contract", async function() {
+    let miner = await setup_miner();
+    let new_address = "0xda3528903bc9d53b1ca608129fa5227ab1ad053b";
+    await miner.pool_set_ace_bank(new_address);
+
+    let ace_contract = await miner.ace_contract_addr();
+
+    assert.equal(new_address, ace_contract);
+});
+
+it("should let us set max bet", async function() {
      let miner = await setup_miner();
-     await miner.pool_set_percentage(5);
+     await miner.pool_set_max_bet(web3.toWei('1', 'ether'));
+     // This exhausts the minimum difficulty over 100 block period
+    try {
+        await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '150000'});
+    } catch(error) {
+        assertJump(error)
+    }
+ });
+
+
+ 
+ it("should distribute a percentage the pool eth to ACE Bank", async function() {
+     let miner = await setup_miner();
+     let initial_balance = await web3.eth.getBalance("0x31d26dc9c64b355b561e8dcd2ba354b93d15eedd");
+     await miner.pool_set_percentage(25);
      // This exhausts the minimum difficulty over 100 block period
      await miner.set_mine_attempts(99);
      await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '150000'});
      await miner.mine({gas: '400000'});
- 
-     // Fast forward
- 	await bte_instance.set_block(51);
- 
-     // Account is ignored, but maintains interface compat with BTE.
- 	await miner.claim(0, accounts[1], {gas: '300000'});
- 
- 	// This should have distributed the entire BTE block to the sole miner in the pool	
- 
-     let balance = await miner.balanceOf(accounts[1]);
- 	assert.equal(balance.valueOf(), 100*(10**8));
 
-    // Now it will succeed
-    await miner.sendTransaction({value: '0', from: accounts[1], gas: '500000'});
- 
- 	balance = await miner.balanceOf(accounts[1]);
- 	assert.equal(balance.valueOf(), 0);
- 
-     // winning account distribution
- 	balance = await bte_instance.balanceOf(accounts[1]);
- 	assert.equal(balance.valueOf(), 95*(10**8));
- 
-     // Pool percentage distribution
- 	balance = await bte_instance.balanceOf(accounts[0]);
- 	assert.equal(balance.valueOf(), 5*(10**8));
+     var res = await miner.find_contribution(accounts[1]);
+     assert.equal(res[0].valueOf(), 0);
+     assert.equal(res[1].toString(), '7500000000000000');
+     assert.equal(res[2].toString(), '7500000000000000');
+     assert.equal(res[3].valueOf(), 0);
+
+     let new_balance = await web3.eth.getBalance("0x31d26dc9c64b355b561e8dcd2ba354b93d15eedd");
+     new_balance -= initial_balance;
+     assert.equal(new_balance.toString(), '2500000000000000');
  
  });
 

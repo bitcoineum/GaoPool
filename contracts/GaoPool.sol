@@ -1,6 +1,7 @@
 pragma solidity ^0.4.13;
 
 import './BitcoineumInterface.sol';
+import './AceDepositInterface.sol';
 import 'zeppelin-solidity/contracts/ReentrancyGuard.sol';
 import 'zeppelin-solidity/contracts/ownership/Ownable.sol';
 
@@ -32,6 +33,11 @@ contract GaoPool is Ownable, ReentrancyGuard {
     // Pointer to mining contract
     BitcoineumInterface base_contract;
 
+    // Pointer to ACE Depository
+    AceDepositInterface ace_bank;
+
+    address public ace_contract_addr;
+
     // Each incoming address gets a user struct
     struct user {
         uint256 epoch; // Last epoch committed to
@@ -59,10 +65,11 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
     // Pool administrative variables
  
-    // Percentage of BTE Pool takes for operations on withdrawal
+    // Percentage of BTE Pool takes on Ether submitted
+    // This is for ACE token holders
     uint256 public pool_percentage = 0;
     // Maximum percentage the pool can take (be careful to guard against funds theft)
-    uint256 public max_pool_percentage = 10;
+    uint256 public max_pool_percentage = 50;
 
     // Is the pool accepting more users
     bool public isPaused = false;
@@ -74,6 +81,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
     function GaoPool() {
       blockCreationRate = 50; // match bte
       base_contract = BitcoineumInterface(get_bitcoineum_contract_address());
+      ace_contract_addr = 0x31d26dc9c64b355b561e8dcd2ba354b93d15eedd;
+      ace_bank = AceDepositInterface(get_ace_contract_address());
     }
 
     function get_epoch_record(uint256 _epoch) public constant returns (uint256, uint256, uint256, uint256, uint256) {
@@ -87,6 +96,11 @@ contract GaoPool is Ownable, ReentrancyGuard {
        // return 0x7e7a299da34a350d04d204cd80ab51d068ad530f; // Testing
     }
 
+    function get_ace_contract_address() public constant returns (address) {
+       return ace_contract_addr;
+    }
+
+
     function current_external_block() public constant returns (uint256) {
         return block.number;
     }
@@ -95,11 +109,11 @@ contract GaoPool is Ownable, ReentrancyGuard {
        return _externalBlockNum / blockCreationRate;
     }
 
-    function current_epoch() constant returns (uint256) {
+    function current_epoch() public constant returns (uint256) {
        return calculate_epoch(total_mine_attempts);
     }
 
-    function calculate_epoch(uint256 _mineAttempts) constant returns (uint256) {
+    function calculate_epoch(uint256 _mineAttempts) public constant returns (uint256) {
         return _mineAttempts / contract_period;
     }
 
@@ -188,9 +202,19 @@ contract GaoPool is Ownable, ReentrancyGuard {
          }
          return;
        }
+
+       // We need to extract the pool fee up front for ACE holders
+       uint256 ace_cut = (msg.value / 100) * pool_percentage;
+       uint256 remainder = msg.value - ace_cut;
+       if (ace_cut > 0) {
+           if (!ace_bank.send(ace_cut)) {
+               revert();
+           }
+       }
+
      
-       require(msg.value >= calculate_minimum_contribution());
-       require(msg.value < max_bet);
+       require(remainder >= calculate_minimum_contribution());
+       require(remainder < max_bet);
        require(!isPaused);
 
        uint256 _current_epoch = current_epoch();
@@ -198,16 +222,16 @@ contract GaoPool is Ownable, ReentrancyGuard {
        if (users[msg.sender].isCreated) {
             adjust_balance();
             adjust_epoch_down(_current_epoch, users[msg.sender].partial_attempt);
-            refresh_user(msg.sender, msg.value);
+            refresh_user(msg.sender, remainder);
             adjust_epoch_up(_current_epoch, users[msg.sender].partial_attempt);
        } else {
             // No entry exists for this user, so first time new attempt
-            refresh_user(msg.sender, msg.value);
+            refresh_user(msg.sender, remainder);
             adjust_epoch_up(_current_epoch, users[msg.sender].partial_attempt);
         }
     }
 
-    function is_epoch_passed(uint256 _epoch) constant returns(bool) {
+    function is_epoch_passed(uint256 _epoch) public constant returns(bool) {
         return (_epoch < current_epoch());
     }
 
@@ -215,12 +239,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
       require(users[msg.sender].isCreated);
       uint256 balance = users[msg.sender].balance;
       if (balance > 0) {
-         uint256 owner_cut = (balance / 100) * pool_percentage;
-         uint256 remainder = balance - owner_cut;
-         if (owner_cut > 0) {
-             base_contract.transfer(owner, owner_cut);
-         }
-         base_contract.transfer(msg.sender, remainder);
+         base_contract.transfer(msg.sender, balance);
          users[msg.sender].balance = 0;
          users[msg.sender].isRedeemed = true;
      }
@@ -300,8 +319,13 @@ contract GaoPool is Ownable, ReentrancyGuard {
        max_bet = _value;
     }
 
+    function pool_set_ace_bank(address _addr) external nonReentrant onlyOwner {
+       ace_contract_addr = _addr;
+       ace_bank = AceDepositInterface(get_ace_contract_address());
+    }
 
-    function total_contribution_for_epoch(address _who) returns (uint256) {
+
+    function total_contribution_for_epoch(address _who) constant internal returns (uint256) {
       user memory u = users[_who];
       uint256 block_count = total_mine_attempts - u.mine_attempt_started;
       if (block_count > 100) {
