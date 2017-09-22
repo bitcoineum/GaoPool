@@ -81,7 +81,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
     function GaoPool() {
       blockCreationRate = 50; // match bte
       base_contract = BitcoineumInterface(get_bitcoineum_contract_address());
-      ace_contract_addr = 0x31d26dc9c64b355b561e8dcd2ba354b93d15eedd;
+      ace_contract_addr = 0x31d26Dc9c64b355b561e8DcD2ba354B93D15EeDd;
       ace_bank = AceDepositInterface(get_ace_contract_address());
     }
 
@@ -129,8 +129,9 @@ contract GaoPool is Ownable, ReentrancyGuard {
                                           uint256 _totalCommittedWei) public constant returns (uint256) {
 
        require(_userContributionWei <= _totalCommittedWei);
-       require(_userContributionWei > 0);
-       require(_totalCommittedWei > 0);
+       if (_totalCommittedWei == 0) {
+          return 0;
+        }
 
        uint256 intermediate = ((_userContributionWei * divisible_units) / _totalCommittedWei);
 
@@ -143,13 +144,17 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
 
     function refresh_user(address _who, uint256 _value) internal {
-       uint256 _current_blocknum = external_to_internal_block_number(current_external_block());
+       uint256 roll_attempt = 0; 
+       if (users[_who].isCreated && users[_who].epoch == current_epoch()) {
+          // We need to roll their partial attempt forward
+          roll_attempt = users[_who].partial_attempt;
+       }
        users[_who].epoch = current_epoch();
        // Evenly divide the attempt over the remaining blocks in this epoch
        uint256 _current_remaining = remaining_epoch_blocks();
        uint256 _splitAttempt = _value / _current_remaining;
        users[_who].mine_attempt_started = total_mine_attempts;
-       users[_who].partial_attempt = _splitAttempt;
+       users[_who].partial_attempt = _splitAttempt + roll_attempt;
        users[_who].isCreated = true;
        users[_who].isRedeemed = false;
     }
@@ -179,7 +184,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
        uint256 _extra
    );
 
-   function adjust_balance() internal {
+   function adjust_token_balance() internal {
      epoch memory ep = epochs[users[msg.sender].epoch];
      uint256 _balance = calculate_proportional_reward(ep.total_claimed,
                                                        total_contribution_for_epoch(msg.sender),
@@ -196,7 +201,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
        if (msg.value == 0) {
          if (users[msg.sender].isCreated) {
            if (is_epoch_passed(users[msg.sender].epoch)) {
-             adjust_balance(); 
+             adjust_token_balance(); 
              do_redemption();
            }
          }
@@ -220,7 +225,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
        uint256 _current_epoch = current_epoch();
 
        if (users[msg.sender].isCreated) {
-            adjust_balance();
+            adjust_token_balance();
             adjust_epoch_down(_current_epoch, users[msg.sender].partial_attempt);
             refresh_user(msg.sender, remainder);
             adjust_epoch_up(_current_epoch, users[msg.sender].partial_attempt);
@@ -327,19 +332,43 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
     function total_contribution_for_epoch(address _who) constant internal returns (uint256) {
       user memory u = users[_who];
-      uint256 block_count = total_mine_attempts - u.mine_attempt_started;
-      if (block_count > 100) {
-         block_count = 100 - (u.mine_attempt_started % 100);
+      uint256 _block_count = total_mine_attempts - u.mine_attempt_started;
+      if (_block_count > contract_period) {
+         if (u.mine_attempt_started < contract_period) {
+            _block_count = contract_period - u.mine_attempt_started;
+          } else {
+            _block_count = contract_period - (u.mine_attempt_started % contract_period);
+          }
       }
-      return (u.partial_attempt * block_count);
+      return (u.partial_attempt * _block_count);
     }
 
-    function find_contribution(address _who) constant external returns (uint256, uint256, uint256, uint256) {
+    function total_contribution_for_epoch_remaining(address _who) constant internal returns (uint256) {
+      user memory u = users[_who];
+      uint256 _remaining_blocks;
+      if (total_mine_attempts < 101) {
+         _remaining_blocks = 100 - total_mine_attempts;
+      } else {
+         if ((total_mine_attempts % 100) == 0) {
+            _remaining_blocks = 0;
+         } else {
+           _remaining_blocks = (contract_period - (total_mine_attempts % 100));
+         }
+      }
+      return (u.partial_attempt * _remaining_blocks);
+    }
+
+
+    function find_contribution(address _who) constant external returns (uint256, uint256, uint256, uint256, uint256) {
       user storage u = users[_who];
       if (u.isCreated) {
-         return (u.epoch, u.partial_attempt, total_contribution_for_epoch(_who), u.balance);
+         return (u.epoch,
+                 u.partial_attempt,
+                 total_contribution_for_epoch(_who),
+                 total_contribution_for_epoch_remaining(_who),
+                 u.balance);
       } else {
-        return (0,0,0,0);
+        return (0,0,0,0,0);
         }
     }
 

@@ -270,16 +270,97 @@ contract('GaoPoolTest', function(accounts) {
        assert.equal(res[2].toString(), '0');
    });
 
-   it("should not allow multiple contributions during the same epoch for a single account", async function() {
+   it("must allocate balances and partial attempts correctly if multiple attempts are made in the same epoch", async function() {
        let miner = await setup_miner();
-       await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '150000'});
-       try {
-           await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '150000'});
-       } catch (error) {
-           assertJump(error);
-       }
+       await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '200000'});
+       let res = await miner.find_contribution(accounts[0]);
+       assert.equal(res[2].toString(), '0');
+       assert.equal(res[3].toString(), '1000000000');
 
+       await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '200000'});
+
+       // This should result in a contribution balance adjustment
+       res = await miner.find_contribution(accounts[0]);
+       assert.equal(res[2].toString(), '0');
+       assert.equal(res[3].toString(), '2000000000');
    });
+ 
+  it("should mine 100 consecutive blocks", async function() {
+     let miner = await setup_miner();
+     // This exhausts the minimum difficulty over 100 block period
+  
+     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+  
+     for (var i=1; i<101; i++) {
+         await miner.mine({gas: '400000'});
+  
+           // Fast forward
+         await bte_instance.set_block((50*i)+1);
+         await miner.set_block((50*i)+1);
+
+         //let total_attempts = await miner.total_mine_attempts();
+         //console.log(total_attempts);
+         let res = await miner.find_contribution(accounts[0]);
+         assert.equal(res[0].valueOf(), 0);
+         assert.equal(res[1].valueOf(), 100000000000000);
+         assert.equal(res[2].valueOf(), 100000000000000 * i);
+         assert.equal(res[3].valueOf(), 10000000000000000 - (100000000000000 * i));
+         assert.equal(res[4].valueOf(), 0);
+
+         let epoch_record = await miner.get_epoch_record(0);
+
+         assert.equal(epoch_record[0].valueOf(), i);
+         assert.equal(epoch_record[1].valueOf(), i-1);
+         assert.equal(epoch_record[2].valueOf(), 100000000000000 * i);
+         assert.equal(epoch_record[3].valueOf(), (100 * (i-1)) * (10**8));
+         assert.equal(epoch_record[4].valueOf(), 100000000000000);
+
+  
+         // Account is ignored, but maintains interface compat with BTE.
+         await miner.claim(i-1, accounts[0], {gas: '300000'});
+  
+         let balance = await miner.balanceOf(accounts[0]);
+         assert.equal(balance.valueOf(), (i*100)*(10**8));
+     }
+
+     var initial_balance = await miner.balanceOf(accounts[0]);
+
+     // Should also mine the next 100 correctly
+
+     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+     for (var i=101; i<201; i++) {
+         await miner.mine({gas: '400000'});
+  
+           // Fast forward
+         await bte_instance.set_block((50*i)+1);
+         await miner.set_block((50*i)+1);
+
+         let total_attempts = await miner.total_mine_attempts();
+         
+         let res = await miner.find_contribution(accounts[0]);
+         assert.equal(res[0].valueOf(), 1);
+         assert.equal(res[1].valueOf(), 100000000000000);
+         assert.equal(res[2].valueOf(), 100000000000000 * (i-100));
+         assert.equal(res[3].valueOf(), 10000000000000000 - (100000000000000 * (i-100)));
+
+         let epoch_record = await miner.get_epoch_record(1);
+
+         assert.equal(epoch_record[0].valueOf(), (i-100));
+         assert.equal(epoch_record[1].valueOf(), (i-100-1));
+         assert.equal(epoch_record[2].valueOf(), 100000000000000 * (i-100));
+         assert.equal(epoch_record[3].valueOf(), (100 * ((i-100)-1)) * (10**8));
+         assert.equal(epoch_record[4].valueOf(), 100000000000000);
+  
+         // Account is ignored, but maintains interface compat with BTE.
+         await miner.claim(i-1, accounts[0], {gas: '300000'});
+  
+         let balance = await miner.balanceOf(accounts[0]);
+         assert.equal(balance.valueOf() - initial_balance, ((i-100)*100)*(10**8));
+     }
+
+  
+  });
+
  
  
  
