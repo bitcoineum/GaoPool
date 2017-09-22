@@ -13,7 +13,7 @@ var provider = new Web3.providers.HttpProvider("http://localhost:8545");
 const web3 = new Web3(provider);
 
 var miner = new BitcoineumMiner(provider,
-                                web3.eth.accounts[2],
+                                web3.eth.accounts[3],
                                 console.log,
                                 bitcoineum_adapter);
                        

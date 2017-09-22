@@ -13,14 +13,11 @@ const web3 = new Web3(provider);
 var bitcoineum_adapter = contract(bitcoineum_artifact);
 bitcoineum_adapter.setProvider(provider);
 
-async function set_percentage() {
+async function claim(blocknum) {
     var bte = await bitcoineum_adapter.deployed();
-    var percentage = await bte.pool_percentage();
-    console.log("Current pool percentage " + percentage);
-    await bte.pool_set_percentage(5, {from: web3.eth.accounts[2]});
-    console.log("Pool percentage set");
+    await bte.claim(blocknum, web3.eth.accounts[6], {from: web3.eth.accounts[3], gas: 800000, gasPrice: web3.toWei('30', 'gwei')});
 }
 
 (async function() {
-  await set_percentage();
+  await claim(84831);
 })();

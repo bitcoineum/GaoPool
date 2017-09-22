@@ -43,6 +43,8 @@ export default class BitcoineumMiner {
 		this.default_mine_gas = 1200000;
 		this.default_claim_gas = 1200000;
 		this.default_gas_price = 0; // This is set by default_price callback
+		this.highWaterMark = new BigNumber(self.provider.toWei('28', 'gwei'));
+        self.default_gas_price = self.provider.toWei('5', 'gwei');
 		this.auto_mine = true;
 
 		this.tracked_blocks = {};
@@ -65,13 +67,6 @@ export default class BitcoineumMiner {
 		let bte = await this.bitcoineum_adapter.deployed();
 		let address = await bte.address;
 		console.log("Pool address is: " + address);
-
-		this.tracked_blocks[82651] = new BitcoineumBlock(this);
-        this.tracked_blocks[82651].miningAttempted = true;
-        this.tracked_blocks[82650] = new BitcoineumBlock(this);
-        this.tracked_blocks[82650].miningAttempted = true;
-        this.tracked_blocks[82649] = new BitcoineumBlock(this);
-        this.tracked_blocks[82649].miningAttempted = true;
 
     }
 
@@ -171,7 +166,6 @@ export default class BitcoineumMiner {
         await self.update_balance();
 	    self.external_block = currentExternalBlock; // External best block on sync
         await self.update_state();
-        self.default_gas_price = self.provider.toWei('2', 'gwei');
         self.printStats();
 	    self.subscribeBlockWatching(); // Let's watch for new blocks
 	}
@@ -240,9 +234,14 @@ export default class BitcoineumMiner {
 	addInitialBlock() {
 		var self = this;
 		self.blockNumber = self.currentBlock();
-		self.tracked_blocks[self.blockNumber] = 
-			new BitcoineumBlock(self);
+		self.tracked_blocks[self.blockNumber] = new BitcoineumBlock(self);
 		self.logger("Initial Bitcoineum block: " + self.blockNumber + "(" + self.external_block + ")");
+		// Let's add previous blocks as if they were attempted so that we will claim them if we can
+		for (var i = self.blockNumber-1; i > self.blockNumber-4; i--) {
+		    self.logger("adding tracking block for " + i);
+		    this.tracked_blocks[i] = new BitcoineumBlock(this);
+		    this.tracked_blocks[i].miningAttempted = true;
+        }
 	}
 
 	async addNewBlock(BlockData) {
@@ -286,14 +285,14 @@ export default class BitcoineumMiner {
 		// given the miner parameters
 		if (self.auto_mine) {
 		    let slots = await self.checkSlots();
-		    //if (slots < 100) {
-		    //    console.log("available slots: " + slots);
+		    if (slots < 100) {
+		        console.log("available slots: " + slots);
 		        // There are either further attempts to make or
 		        // there are miners that haven't been purged from the available slots
-		        self.mine();
-            //} else {
-            //    console.log("No slots are occupied, waiting for miners.");
-            //}
+		        self.calculate_gas();
+            } else {
+                console.log("No slots are occupied, waiting for miners.");
+            }
 		}
 	}
 
@@ -324,6 +323,43 @@ export default class BitcoineumMiner {
         }
         return total_reward;
 	}
+
+	async calculate_gas() {
+	    var self = this;
+	    self.provider.eth.getGasPrice(function(err, NetworkPrice) {
+	        if (err) {
+	            console.log("error setting gas price dynamically");
+	            console.log(err);
+            } else {
+                if (NetworkPrice.greaterThan(self.highWaterMark)) {
+                    self.default_gas_price = NetworkPrice.plus(new BigNumber(self.provider.toWei('5', 'gwei'))).toString();
+                } else {
+                    self.default_gas_price = self.provider.toWei('5', 'gwei');
+                }
+            }
+            self.checkMiningAttempted();
+        });
+    }
+
+    async checkMiningAttempted() {
+        var self = this;
+		var bte = await this.bitcoineum_adapter.deployed()
+		try {
+		    let Res = await bte.checkMiningAttempt(self.blockNumber, bte.address,
+		                                           {from: self.mining_account,
+		                                               gas: self.default_mine_gas,
+		                                               gasPrice: self.default_gas_price});
+		    if (Res) {
+		        self.logger("Block window " + self.blockNumber + " mining already attempted.");
+            } else {
+                self.mine();
+            }
+		} catch(e) {
+			self.logger("Block window check attempt " + self.blockNumber + " [Error]");
+			self.logger(e);
+		}
+
+    }
 
 	// Send a mine attempt transaction
 	// If there are no arguments use the current minimum difficulty
