@@ -20,7 +20,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
     // Lifetime attempt
     uint256 public total_attempt = 0;
 
-    uint256 public constant divisible_units = 10000000;
+    uint256 public constant divisible_units = 1000000000;
     uint256 public blockCreationRate = 0;
 
     // Mine attempts will be used to track the epoch instead of the native
@@ -44,8 +44,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
         uint256 mine_attempt_started; // The block within the epoch the user made a mine attempt
         uint256 partial_attempt; // The attempt value per block
         uint256 balance; // Accumulated lazily evaluated balance
+        uint256 last_redemption_epoch_balance;
         bool isCreated;
-        bool isRedeemed;
     }
 
     // Each epoch represents a contract period of blocks
@@ -156,7 +156,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
        users[_who].mine_attempt_started = total_mine_attempts;
        users[_who].partial_attempt = _splitAttempt + roll_attempt;
        users[_who].isCreated = true;
-       users[_who].isRedeemed = false;
     }
 
     function adjust_epoch_up(uint256 _epochNumber, uint256 _partialAttempt) internal {
@@ -200,10 +199,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
        if (msg.value == 0) {
          if (users[msg.sender].isCreated) {
-           if (is_epoch_passed(users[msg.sender].epoch)) {
              adjust_token_balance(); 
              do_redemption();
-           }
          }
          return;
        }
@@ -241,13 +238,13 @@ contract GaoPool is Ownable, ReentrancyGuard {
     }
 
     function do_redemption() internal {
-      require(users[msg.sender].isCreated);
       uint256 balance = users[msg.sender].balance;
       if (balance > 0) {
+         LogEvent("Balance", base_contract.balanceOf(this));
          base_contract.transfer(msg.sender, balance);
          users[msg.sender].balance = 0;
-         users[msg.sender].isRedeemed = true;
-     }
+         users[msg.sender].mine_attempt_started = total_mine_attempts;
+      }
      }
 
     function mine() external nonReentrant
@@ -300,13 +297,10 @@ contract GaoPool is Ownable, ReentrancyGuard {
       if (!users[_addr].isCreated) {
           return 0;
         }
-        if (users[_addr].isRedeemed) {
-           return 0;
-        }
         epoch storage ep = epochs[users[_addr].epoch];
         uint256 _balance = calculate_proportional_reward(ep.total_claimed,
-                                                             total_contribution_for_epoch(_addr),
-                                                             ep.actual_attempt);
+                                                         total_contribution_for_epoch(_addr),
+                                                         ep.actual_attempt);
         return users[_addr].balance + _balance;
       }
 
@@ -332,6 +326,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
     function total_contribution_for_epoch(address _who) constant internal returns (uint256) {
       user memory u = users[_who];
+
       uint256 _block_count = total_mine_attempts - u.mine_attempt_started;
       if (_block_count > contract_period) {
          if (u.mine_attempt_started < contract_period) {
@@ -363,16 +358,20 @@ contract GaoPool is Ownable, ReentrancyGuard {
     }
 
 
-    function find_contribution(address _who) constant external returns (uint256, uint256, uint256, uint256, uint256) {
+    function find_contribution(address _who) constant external returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256) {
       user storage u = users[_who];
+      epoch storage ep = epochs[u.epoch];
       if (u.isCreated) {
          return (u.epoch,
                  u.partial_attempt,
                  total_contribution_for_epoch(_who),
                  total_contribution_for_epoch_remaining(_who),
-                 balanceOf(_who));
+                 balanceOf(_who),
+                 ep.total_claimed,
+                 ep.actual_attempt
+                 );
       } else {
-        return (0,0,0,0,0);
+        return (0,0,0,0,0,0,0);
         }
     }
 
