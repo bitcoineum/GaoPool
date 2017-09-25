@@ -4,8 +4,8 @@
   "description": "Unlimited miner smart contract framework",
   "main": "truffle.js",
   "scripts": {
-    "test": "scripts/test.sh",
-    "test2": "scripts/test2.sh",
+    "test": "scripts/test2.sh",
+    "test2": "scripts/test.sh",
     "console": "truffle console",
     "build": "truffle compile",
     "migrate": "truffle migrate",
@@ -32,6 +32,7 @@
   },
   "homepage": "https://gitlab.com/mbrix/Bitcoineum_Gaopool",
   "dependencies": {
+    "babel": "^6.23.0",
     "babel-runtime": "^6.26.0",
     "npm-run": "^4.1.2",
     "truffle": "^3.4.9",

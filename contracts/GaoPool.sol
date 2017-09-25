@@ -1,3 +1,22 @@
+// This is a dual licensed product available under commercial license
+// and under the terms of the GPLv3
+// Copyright (C) <2017>  <Matthew Branton>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
+
 pragma solidity ^0.4.13;
 
 import './BitcoineumInterface.sol';
@@ -45,6 +64,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
         uint256 partial_attempt; // The attempt value per block
         uint256 balance; // Accumulated lazily evaluated balance
         uint256 last_redemption_epoch_balance;
+        uint256 last_redemption_epoch_claimed;
         bool isCreated;
     }
 
@@ -145,17 +165,20 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
     function refresh_user(address _who, uint256 _value) internal {
        uint256 roll_attempt = 0; 
-       if (users[_who].isCreated && users[_who].epoch == current_epoch()) {
+       user storage u = users[_who];
+       if (u.isCreated && u.epoch == current_epoch()) {
           // We need to roll their partial attempt forward
-          roll_attempt = users[_who].partial_attempt;
+          roll_attempt = u.partial_attempt;
        }
-       users[_who].epoch = current_epoch();
+       u.epoch = current_epoch();
        // Evenly divide the attempt over the remaining blocks in this epoch
        uint256 _current_remaining = remaining_epoch_blocks();
        uint256 _splitAttempt = _value / _current_remaining;
-       users[_who].mine_attempt_started = total_mine_attempts;
-       users[_who].partial_attempt = _splitAttempt + roll_attempt;
-       users[_who].isCreated = true;
+       u.mine_attempt_started = total_mine_attempts;
+       u.last_redemption_epoch_balance = epochs[u.epoch].actual_attempt;
+       u.last_redemption_epoch_claimed = epochs[u.epoch].total_claimed;
+       u.partial_attempt = _splitAttempt + roll_attempt;
+       u.isCreated = true;
     }
 
     function adjust_epoch_up(uint256 _epochNumber, uint256 _partialAttempt) internal {
@@ -184,11 +207,12 @@ contract GaoPool is Ownable, ReentrancyGuard {
    );
 
    function adjust_token_balance() internal {
-     epoch memory ep = epochs[users[msg.sender].epoch];
-     uint256 _balance = calculate_proportional_reward(ep.total_claimed,
+     user storage u = users[msg.sender];
+     epoch memory ep = epochs[u.epoch];
+     uint256 _balance = calculate_proportional_reward(ep.total_claimed - u.last_redemption_epoch_claimed,
                                                        total_contribution_for_epoch(msg.sender),
-                                                       ep.actual_attempt);
-     users[msg.sender].balance += _balance;
+                                                       ep.actual_attempt - u.last_redemption_epoch_balance);
+     u.balance += _balance;
    }
 
     function () payable {
@@ -294,14 +318,15 @@ contract GaoPool is Ownable, ReentrancyGuard {
     function balanceOf(address _addr) constant returns (uint256 balance) {
       // We can't calculate the balance until the epoch is closed
       // but we can provide an estimate based on the mining
-      if (!users[_addr].isCreated) {
+      user memory u = users[_addr];
+      if (!u.isCreated) {
           return 0;
         }
-        epoch storage ep = epochs[users[_addr].epoch];
-        uint256 _balance = calculate_proportional_reward(ep.total_claimed,
+        epoch storage ep = epochs[u.epoch];
+        uint256 _balance = calculate_proportional_reward(ep.total_claimed - u.last_redemption_epoch_claimed,
                                                          total_contribution_for_epoch(_addr),
-                                                         ep.actual_attempt);
-        return users[_addr].balance + _balance;
+                                                         ep.actual_attempt - u.last_redemption_epoch_balance);
+        return u.balance + _balance;
       }
 
     function pool_set_percentage(uint8 _percentage) external nonReentrant onlyOwner {
@@ -359,7 +384,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
 
     function find_contribution(address _who) constant external returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256) {
-      user storage u = users[_who];
+      user memory u = users[_who];
       epoch storage ep = epochs[u.epoch];
       if (u.isCreated) {
          return (u.epoch,
