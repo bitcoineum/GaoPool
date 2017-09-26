@@ -17,7 +17,7 @@
 //
 
 
-pragma solidity ^0.4.13;
+pragma solidity ^0.4.15;
 
 import './BitcoineumInterface.sol';
 import './AceDepositInterface.sol';
