@@ -75,7 +75,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
         uint256 total_claimed;
         uint256 actual_attempt;
         uint256 adjusted_unit;
-        bool isSealed;
     }
 
 
@@ -206,25 +205,32 @@ contract GaoPool is Ownable, ReentrancyGuard {
        uint256 _extra
    );
 
-   function adjust_token_balance() internal {
-     user storage u = users[msg.sender];
+   function adjust_token_balance(address _who) internal {
+     user storage u = users[_who];
      epoch memory ep = epochs[u.epoch];
      uint256 _balance = calculate_proportional_reward(ep.total_claimed - u.last_redemption_epoch_claimed,
-                                                       total_contribution_for_epoch(msg.sender),
+                                                       total_contribution_for_epoch(_who),
                                                        ep.actual_attempt - u.last_redemption_epoch_balance);
      u.balance += _balance;
    }
 
     function () payable {
+       
+       address _who = msg.sender;
+       deposit(_who);
+    }
 
-
+    // A deposit can be done either directly via the default payment interface
+    // or via the deposit function so that a smart contract can intermediate the
+    // the deposit process.
+    function deposit(address _who) public payable nonReentrant {
        // First thing to do is check on whether we can do a redemption
        // We only allow redemption past the Epoch window
 
        if (msg.value == 0) {
-         if (users[msg.sender].isCreated) {
-             adjust_token_balance(); 
-             do_redemption();
+         if (users[_who].isCreated) {
+             adjust_token_balance(_who); 
+             do_redemption(_who);
          }
          return;
        }
@@ -245,15 +251,15 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
        uint256 _current_epoch = current_epoch();
 
-       if (users[msg.sender].isCreated) {
-            adjust_token_balance();
-            adjust_epoch_down(_current_epoch, users[msg.sender].partial_attempt);
-            refresh_user(msg.sender, remainder);
-            adjust_epoch_up(_current_epoch, users[msg.sender].partial_attempt);
+       if (users[_who].isCreated) {
+            adjust_token_balance(_who);
+            adjust_epoch_down(_current_epoch, users[_who].partial_attempt);
+            refresh_user(_who, remainder);
+            adjust_epoch_up(_current_epoch, users[_who].partial_attempt);
        } else {
             // No entry exists for this user, so first time new attempt
-            refresh_user(msg.sender, remainder);
-            adjust_epoch_up(_current_epoch, users[msg.sender].partial_attempt);
+            refresh_user(_who, remainder);
+            adjust_epoch_up(_current_epoch, users[_who].partial_attempt);
         }
     }
 
@@ -261,13 +267,13 @@ contract GaoPool is Ownable, ReentrancyGuard {
         return (_epoch < current_epoch());
     }
 
-    function do_redemption() internal {
-      uint256 balance = users[msg.sender].balance;
+    function do_redemption(address _who) internal {
+      uint256 balance = users[_who].balance;
       if (balance > 0) {
          LogEvent("Balance", base_contract.balanceOf(this));
-         base_contract.transfer(msg.sender, balance);
-         users[msg.sender].balance = 0;
-         users[msg.sender].mine_attempt_started = total_mine_attempts;
+         base_contract.transfer(_who, balance);
+         users[_who].balance = 0;
+         users[_who].mine_attempt_started = total_mine_attempts;
       }
      }
 

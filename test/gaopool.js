@@ -235,6 +235,18 @@ contract('GaoPoolTest', function(accounts) {
        assert.equal(res[2].toString(), '0');
        assert.equal(res[3].valueOf(), 1000000000);
    });
+
+   it("should allow me to add a contribution to the pool via the deposit interface", async function() {
+       let miner = await setup_miner();
+       await miner.set_mine_attempts(100); // 2nd epoch (1st block)
+       await miner.deposit(accounts[0], {value: '1000000000', from: accounts[0], gas: '200000'}); 
+       var res = await miner.find_contribution(accounts[0]);
+       assert.equal(res[0].valueOf(), 1);
+       assert.equal(res[1].toString(), '10000000');
+       assert.equal(res[2].toString(), '0');
+       assert.equal(res[3].valueOf(), 1000000000);
+   });
+
  
    it("should return zeros when a contribution does not exist", async function() {
        let miner = await setup_miner();
@@ -320,7 +332,7 @@ contract('GaoPoolTest', function(accounts) {
      let miner = await setup_miner();
      // This exhausts the minimum difficulty over 100 block period
   
-     await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+     await miner.deposit(accounts[0], {value: '10000000000000000', from: accounts[0], gas: '200000'});
   
      for (var i=1; i<101; i++) {
          await miner.mine({gas: '400000'});
