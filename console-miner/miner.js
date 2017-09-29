@@ -114,7 +114,6 @@ export default class BitcoineumMiner {
 							return;
 						} else {
 						    console.log("initialize state");
-						    console.log("initialize state");
                 			self.initializeState(Block.number);
 						}
 					});
@@ -284,15 +283,7 @@ export default class BitcoineumMiner {
 		// If we are auto mining, then kick off a mine attempt for this block
 		// given the miner parameters
 		if (self.auto_mine) {
-		    let slots = await self.checkSlots();
-		    if (slots < 100) {
-		        console.log("available slots: " + slots);
-		        // There are either further attempts to make or
-		        // there are miners that haven't been purged from the available slots
 		        self.calculate_gas();
-            } else {
-                console.log("No slots are occupied, waiting for miners.");
-            }
 		}
 	}
 
