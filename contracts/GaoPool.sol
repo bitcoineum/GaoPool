@@ -414,6 +414,15 @@ contract GaoPool is Ownable, ReentrancyGuard {
      return base_contract.checkWinning(_blockNum);
    }
 
+   function canMine() constant external returns (bool) {
+      uint256 _epoch = current_epoch();
+      uint256 _adjusted_unit = epochs[_epoch].adjusted_unit;
+      if (_adjusted_unit > calculate_minimum_contribution()) {
+         return true;
+      }
+      return false;
+   }
+
 
 
 }

@@ -337,18 +337,34 @@ export default class BitcoineumMiner {
                     self.default_gas_price = self.provider.toWei('5', 'gwei');
                 }
             }
-            self.checkMiningAttempted();
+            self.canMine();
         });
     }
+
+    async canMine() {
+        var self = this;
+		var bte = await this.bitcoineum_adapter.deployed()
+		try {
+		    let Res = await bte.canMine.call({from: self.mining_account});
+		    if (Res) {
+		    	self.checkMiningAttempted();
+            } else {
+            	console.log("Mining power is too low");
+            }
+		} catch(e) {
+			self.logger("Block window canMine " + self.blockNumber + " [Error]");
+			self.logger(e);
+		}
+
+    }
+
 
     async checkMiningAttempted() {
         var self = this;
 		var bte = await this.bitcoineum_adapter.deployed()
 		try {
-		    let Res = await bte.checkMiningAttempt(self.blockNumber, bte.address,
-		                                           {from: self.mining_account,
-		                                               gas: self.default_mine_gas,
-		                                               gasPrice: self.default_gas_price});
+		    let Res = await bte.checkMiningAttempt.call(self.blockNumber, bte.address,
+		                                           {from: self.mining_account});
 		    if (Res) {
 		        self.logger("Block window " + self.blockNumber + " mining already attempted.");
             } else {

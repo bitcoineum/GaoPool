@@ -297,6 +297,20 @@ contract('GaoPoolTest', function(accounts) {
        assert.equal(res[3].toString(), '2000000000');
    });
 
+   it("should be able to check if mining is ready", async function() {
+       let miner = await setup_miner();
+
+	   let status = await miner.canMine();
+
+	   assert.isFalse(status);
+
+       await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+
+       status = await miner.canMine();
+       assert.isTrue(status);
+   });
+
+
    it("should accurately reflect balance across epochs", async function() {
        let miner = await setup_miner();
        await miner.set_mine_attempts(99);
