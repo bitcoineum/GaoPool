@@ -8,3 +8,7 @@ Running migration: 2_deploy_contracts.js
   SharkPool: 0x29aa20fb9b23421e310bdb8a7cfb81d7fbb4a1b3
 Saving successful migration to network...
 Saving artifacts...
+
+
+ropsten GaoPool
+0xd3b6d31ad46b13f14afe32b86b0684cb973b518d
