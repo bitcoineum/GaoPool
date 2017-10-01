@@ -392,25 +392,6 @@ export default class BitcoineumMiner {
         self.logger("Check: " + block_number + " " + Result);
     }
 
-    async claim_block(block_number) {
-        var self = this;
-		var bte = await self.bitcoineum_adapter.deployed();
-        let Result = await bte.claim(block_number,
-				             self.mining_account, 
-				             {from: self.mining_account,
-				                 gas: self.default_claim_gas,
-				                 gasPrice: self.default_gas_price});
-	   self.logger("Claim: " + block_number + " " + Result);
-    }
-
-    // If there are unclaimed slots in the mining contract
-    // try to mine until they are all claimed
-	async checkSlots() {
-	    var self = this;
-	    var bte = await self.bitcoineum_adapter.deployed();
-	    var slots = await bte.available_slots();
-	    return slots;
-    }
 
 	// Did we win this block?
 	// We ask the network instead of trying
