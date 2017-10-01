@@ -111,8 +111,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
        
 
     function get_bitcoineum_contract_address() public constant returns (address) {
-       //return 0x73dD069c299A5d691E9836243BcaeC9c8C1D8734; // Production
-       return 0x213780b6cf4B265fEdEFF4C8aAd239a85983705D; // Ropsten
+       return 0x73dD069c299A5d691E9836243BcaeC9c8C1D8734; // Production
+       //return 0x213780b6cf4B265fEdEFF4C8aAd239a85983705D; // Ropsten
     }
 
     function get_ace_contract_address() public constant returns (address) {
@@ -220,6 +220,13 @@ contract GaoPool is Ownable, ReentrancyGuard {
        deposit(_who);
     }
 
+    function redeem(address _who) public nonReentrant {
+      if (users[_who].isCreated) {
+         adjust_token_balance(_who);
+         do_redemption(_who);
+      }
+    }
+
     // A deposit can be done either directly via the default payment interface
     // or via the deposit function so that a smart contract can intermediate the
     // the deposit process.
@@ -229,8 +236,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
        if (msg.value == 0) {
          if (users[_who].isCreated) {
-             adjust_token_balance(_who); 
-             do_redemption(_who);
+           adjust_token_balance(_who);
+           do_redemption(_who);
          }
          return;
        }

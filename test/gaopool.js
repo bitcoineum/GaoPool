@@ -634,8 +634,10 @@ contract('GaoPoolTest', function(accounts) {
  
     // Fast forward the contract mining attempt window
   	// Now redeem, redemption is done via a 0 ether transaction to the pool
- 
-    await miner.sendTransaction({value: '0', from: accounts[0], gas: '500000'});
+
+	// Let's use the alternate direct redeem interface
+	
+	await miner.redeem(accounts[0], {gas: '500000'});
 
   	balance = await bte_instance.balanceOf(accounts[0]);
   	assert.equal(balance.valueOf(), 25*(10**8));
@@ -798,8 +800,9 @@ contract('GaoPoolTest', function(accounts) {
 
     
     // Let's redeem and check the balance again, there hasn't been a claim
-    
-    await miner.sendTransaction({value: '0', from: accounts[1], gas: '500000'});
+    // Let's use the alternative interface
+   
+   	await miner.redeem(accounts[1], {gas: '500000'});
     
     res = await miner.find_contribution(accounts[1]);
     assert.equal(res[2].toString(), '100000000000000');
