@@ -310,6 +310,21 @@ contract('GaoPoolTest', function(accounts) {
        assert.isTrue(status);
    });
 
+   it("should let us tweak the mining attempts", async function() {
+       let miner = await setup_miner();
+       await miner.pool_set_mining_attempts(10, 10);
+       
+       await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
+       await miner.mine({gas: '400000'});
+       let epoch_record = await miner.get_epoch_record(0);
+       assert.equal(epoch_record[0], 11);
+       
+       // Now tweak attempts
+       await miner.pool_set_mining_attempts(20, 20);
+
+       epoch_record = await miner.get_epoch_record(0);
+       assert.equal(epoch_record[0], 20);
+   });
 
    it("should accurately reflect balance across epochs", async function() {
        let miner = await setup_miner();

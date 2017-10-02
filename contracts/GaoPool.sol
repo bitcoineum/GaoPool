@@ -361,6 +361,15 @@ contract GaoPool is Ownable, ReentrancyGuard {
        ace_bank = AceDepositInterface(get_ace_contract_address());
     }
 
+    // Tweak the mining attempts for an epoch so that we can create pool
+    // offsets when we set up the load balancers
+    // This shouldn't be called if the pool is running
+    function pool_set_mining_attempts(uint256 _total_attempts, uint256 _epoch_attempts) external nonReentrant onlyOwner {
+       total_mine_attempts = _total_attempts;
+       epoch storage ep = epochs[current_epoch()];
+       ep.mined_blocks = _epoch_attempts;
+    }
+
 
     function total_contribution_for_epoch(address _who) constant internal returns (uint256) {
       user memory u = users[_who];
