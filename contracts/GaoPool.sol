@@ -27,9 +27,11 @@ import 'zeppelin-solidity/contracts/ownership/Ownable.sol';
 
 // Gao Pool, unlimited user miner with contract epochs
 // in honor of Gao.
-
 contract GaoPool is Ownable, ReentrancyGuard {
-
+    /**
+     * Storages
+     */
+     
     string constant public pool_name = "GaoPool Unlimited";
     string constant public pool_version = "0.3";
 
@@ -45,9 +47,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
     // Mine attempts will be used to track the epoch instead of the native
     // Ethereum block windows like BTE. This preserves value in the event of
     // a network disruption.
-
     uint256 public total_mine_attempts = 0;
-
 
     // Pointer to mining contract
     BitcoineumInterface base_contract;
@@ -57,14 +57,40 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
     address public ace_contract_addr;
 
+    mapping (address => user) public users;
+    mapping (uint256 => epoch) public epochs;
+    mapping (uint256 => uint256) public bte_block_to_epoch;
+
+    // Pool administrative variables
+ 
+    // Percentage of BTE Pool takes on Ether submitted
+    // This is for ACE token holders
+    uint256 public pool_percentage = 0;
+    // Maximum percentage the pool can take (be careful to guard against funds theft)
+    uint256 public max_pool_percentage = 50;
+
+    // Is the pool accepting more users
+    bool public isPaused = false;
+
+    // Set the maximum bet for a single user
+    uint256 public max_bet = 10000 ether;
+
+    /**
+     * Events
+     */
+
     // Owner triggers mining
-    event Mined(address indexed executor);
+    event Mined(address indexed _executor);
 
     // User deposits fund to this pool
-    event Deposited(address indexed from, uint256 value, uint256 fee);
+    event Deposited(address indexed _from, uint256 _value, uint256 _fee);
 
     // User redeems profit mined from this pool
-    event Redeemed(address indexed to, uint256 value, uint256 fee);
+    event Redeemed(address indexed _to, uint256 _value, uint256 _fee);
+
+    /**
+     * Structs
+     */
 
     // Each incoming address gets a user struct
     struct user {
@@ -85,26 +111,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
         uint256 actual_attempt;
         uint256 adjusted_unit;
     }
-
-
-    mapping (address => user) public users;
-    mapping (uint256 => epoch) public epochs;
-    mapping (uint256 => uint256) public bte_block_to_epoch;
-
-    // Pool administrative variables
- 
-    // Percentage of BTE Pool takes on Ether submitted
-    // This is for ACE token holders
-    uint256 public pool_percentage = 0;
-    // Maximum percentage the pool can take (be careful to guard against funds theft)
-    uint256 public max_pool_percentage = 50;
-
-    // Is the pool accepting more users
-    bool public isPaused = false;
-
-    // Set the maximum bet for a single user
-    uint256 public max_bet = 10000 ether;
-
 
     function GaoPool() {
       blockCreationRate = 50; // match bte
@@ -339,7 +345,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
     }
 
     // External utility functions
-
     function balanceOf(address _addr) constant returns (uint256 balance) {
       // We can't calculate the balance until the epoch is closed
       // but we can provide an estimate based on the mining
@@ -450,7 +455,4 @@ contract GaoPool is Ownable, ReentrancyGuard {
       }
       return false;
    }
-
-
-
 }
