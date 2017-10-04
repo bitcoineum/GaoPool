@@ -1046,7 +1046,7 @@ it("should let us set max bet", async function() {
 
     // This is rounding error slippage
     contract_balance = await web3.eth.getBalance(miner.address);
-    assert.isBelow(contract_balance.valueOf(), 10000000000004000);
+    assert.isBelow(contract_balance.toNumber(), 10000000000004000);
 
  });
 
