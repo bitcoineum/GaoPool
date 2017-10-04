@@ -27,9 +27,11 @@ import 'zeppelin-solidity/contracts/ownership/Ownable.sol';
 
 // Gao Pool, unlimited user miner with contract epochs
 // in honor of Gao.
-
 contract GaoPool is Ownable, ReentrancyGuard {
-
+    /**
+     * Storages
+     */
+     
     string constant public pool_name = "GaoPool Unlimited";
     string constant public pool_version = "0.3";
 
@@ -45,9 +47,7 @@ contract GaoPool is Ownable, ReentrancyGuard {
     // Mine attempts will be used to track the epoch instead of the native
     // Ethereum block windows like BTE. This preserves value in the event of
     // a network disruption.
-
     uint256 public total_mine_attempts = 0;
-
 
     // Pointer to mining contract
     BitcoineumInterface base_contract;
@@ -56,6 +56,41 @@ contract GaoPool is Ownable, ReentrancyGuard {
     AceDepositInterface ace_bank;
 
     address public ace_contract_addr;
+
+    mapping (address => user) public users;
+    mapping (uint256 => epoch) public epochs;
+    mapping (uint256 => uint256) public bte_block_to_epoch;
+
+    // Pool administrative variables
+ 
+    // Percentage of BTE Pool takes on Ether submitted
+    // This is for ACE token holders
+    uint256 public pool_percentage = 0;
+    // Maximum percentage the pool can take (be careful to guard against funds theft)
+    uint256 public max_pool_percentage = 50;
+
+    // Is the pool accepting more users
+    bool public isPaused = false;
+
+    // Set the maximum bet for a single user
+    uint256 public max_bet = 10000 ether;
+
+    /**
+     * Events
+     */
+
+    // Owner triggers mining
+    event Mined(address indexed _executor);
+
+    // User deposits fund to this pool
+    event Deposited(address indexed _from, uint256 _value, uint256 _fee);
+
+    // User redeems profit mined from this pool
+    event Redeemed(address indexed _to, uint256 _value, uint256 _fee);
+
+    /**
+     * Structs
+     */
 
     // Each incoming address gets a user struct
     struct user {
@@ -76,26 +111,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
         uint256 actual_attempt;
         uint256 adjusted_unit;
     }
-
-
-    mapping (address => user) public users;
-    mapping (uint256 => epoch) public epochs;
-    mapping (uint256 => uint256) public bte_block_to_epoch;
-
-    // Pool administrative variables
- 
-    // Percentage of BTE Pool takes on Ether submitted
-    // This is for ACE token holders
-    uint256 public pool_percentage = 0;
-    // Maximum percentage the pool can take (be careful to guard against funds theft)
-    uint256 public max_pool_percentage = 50;
-
-    // Is the pool accepting more users
-    bool public isPaused = false;
-
-    // Set the maximum bet for a single user
-    uint256 public max_bet = 10000 ether;
-
 
     function GaoPool() {
       blockCreationRate = 50; // match bte
@@ -205,25 +220,18 @@ contract GaoPool is Ownable, ReentrancyGuard {
        uint256 _extra
    );
 
-   function adjust_token_balance(address _who) internal {
-     user storage u = users[_who];
-     epoch memory ep = epochs[u.epoch];
-     uint256 _balance = calculate_proportional_reward(ep.total_claimed - u.last_redemption_epoch_claimed,
-                                                       total_contribution_for_epoch(_who),
-                                                       ep.actual_attempt - u.last_redemption_epoch_balance);
-     u.balance += _balance;
-   }
-
     function () payable {
-       
-       address _who = msg.sender;
-       deposit(_who);
+      deposit(msg.sender);
     }
 
-    function redeem(address _who) public nonReentrant {
-      if (users[_who].isCreated) {
-         adjust_token_balance(_who);
-         do_redemption(_who);
+    function redeem(address _who) external nonReentrant {
+      _redeem(_who);
+    }
+
+    function _redeem(address beneficiary) internal {
+      if (users[beneficiary].isCreated) {
+         adjust_token_balance(beneficiary);
+         do_redemption(beneficiary);
       }
     }
 
@@ -233,12 +241,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
     function deposit(address _who) public payable nonReentrant {
        // First thing to do is check on whether we can do a redemption
        // We only allow redemption past the Epoch window
-
        if (msg.value == 0) {
-         if (users[_who].isCreated) {
-           adjust_token_balance(_who);
-           do_redemption(_who);
-         }
+         _redeem(_who);
          return;
        }
 
@@ -258,50 +262,64 @@ contract GaoPool is Ownable, ReentrancyGuard {
 
        uint256 _current_epoch = current_epoch();
 
-       if (users[_who].isCreated) {
-            adjust_token_balance(_who);
-            adjust_epoch_down(_current_epoch, users[_who].partial_attempt);
-            refresh_user(_who, remainder);
-            adjust_epoch_up(_current_epoch, users[_who].partial_attempt);
-       } else {
-            // No entry exists for this user, so first time new attempt
-            refresh_user(_who, remainder);
-            adjust_epoch_up(_current_epoch, users[_who].partial_attempt);
-        }
+      if (users[_who].isCreated) {
+        adjust_token_balance(_who);
+        adjust_epoch_down(_current_epoch, users[_who].partial_attempt);
+        refresh_user(_who, remainder);
+        adjust_epoch_up(_current_epoch, users[_who].partial_attempt);
+      } else {
+        // No entry exists for this user, so first time new attempt
+        refresh_user(_who, remainder);
+        adjust_epoch_up(_current_epoch, users[_who].partial_attempt);
+      }
+
+      Deposited(_who, remainder, ace_cut);
     }
 
     function is_epoch_passed(uint256 _epoch) public constant returns(bool) {
         return (_epoch < current_epoch());
     }
 
+    function adjust_token_balance(address _who) internal {
+      user storage u = users[_who];
+      epoch memory ep = epochs[u.epoch];
+      uint256 _balance = calculate_proportional_reward(ep.total_claimed - u.last_redemption_epoch_claimed,
+                                                        total_contribution_for_epoch(_who),
+                                                        ep.actual_attempt - u.last_redemption_epoch_balance);
+      u.balance += _balance;
+    }
+
     function do_redemption(address _who) internal {
       uint256 balance = users[_who].balance;
       if (balance > 0) {
-         LogEvent("Balance", base_contract.balanceOf(this));
-         base_contract.transfer(_who, balance);
-         users[_who].balance = 0;
-         users[_who].mine_attempt_started = total_mine_attempts;
+        LogEvent("Balance", base_contract.balanceOf(this));
+        base_contract.transfer(_who, balance);
+        users[_who].balance = 0;
+        users[_who].mine_attempt_started = total_mine_attempts;
       }
-     }
 
-    function mine() external nonReentrant
-    {
-     // Did someone already try to mine this block?
-     uint256 _blockNum = external_to_internal_block_number(current_external_block());
-     require(!base_contract.checkMiningAttempt(_blockNum, this));
+      Redeemed(_who, balance, 0);
+    }
 
-     // Get the current epoch information
-     uint256 _epoch = current_epoch();
-     epoch storage e = epochs[_epoch];
-     bte_block_to_epoch[_blockNum] = _epoch;
-     // We need to track which contract window this attempt is associated with
-     if (e.adjusted_unit > 0) {
-        e.actual_attempt += e.adjusted_unit;
-        // Now we have a total contribution amount
-        base_contract.mine.value(e.adjusted_unit)();
-        e.mined_blocks += 1;
-        total_mine_attempts += 1;
-     }
+    function mine() external nonReentrant {
+      // Did someone already try to mine this block?
+      uint256 _blockNum = external_to_internal_block_number(current_external_block());
+      require(!base_contract.checkMiningAttempt(_blockNum, this));
+
+      // Get the current epoch information
+      uint256 _epoch = current_epoch();
+      epoch storage e = epochs[_epoch];
+      bte_block_to_epoch[_blockNum] = _epoch;
+      // We need to track which contract window this attempt is associated with
+      if (e.adjusted_unit > 0) {
+          e.actual_attempt += e.adjusted_unit;
+          // Now we have a total contribution amount
+          base_contract.mine.value(e.adjusted_unit)();
+          e.mined_blocks += 1;
+          total_mine_attempts += 1;
+      }
+
+      Mined(msg.sender);
     }
 
    function claim(uint256 _blockNumber, address forCreditTo)
@@ -327,7 +345,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
     }
 
     // External utility functions
-
     function balanceOf(address _addr) constant returns (uint256 balance) {
       // We can't calculate the balance until the epoch is closed
       // but we can provide an estimate based on the mining
@@ -438,7 +455,4 @@ contract GaoPool is Ownable, ReentrancyGuard {
       }
       return false;
    }
-
-
-
 }

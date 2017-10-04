@@ -1,10 +1,11 @@
 'use strict';
 
+const assert = require('chai').assert;
+
 var GaoPool = artifacts.require("./GaoPool.sol");
 var GaoPoolMock = artifacts.require("./helpers/GaoPoolMock.sol");
 const assertJump = require('zeppelin-solidity/test/helpers/assertJump');
 var BitcoineumMock = artifacts.require('./helpers/BitcoineumMock.sol');
-
 var BigNumber = require("bignumber.js");
 
 // Helper functions
@@ -70,50 +71,49 @@ async function setup_miner() {
 contract('GaoPoolTest', function(accounts) {
 
 
-  // Maxint in Ether
-  var maxint = new BigNumber(2).toPower(256).minus(1);
+    // Maxint in Ether
+    var maxint = new BigNumber(2).toPower(256).minus(1);
 
-  it("should have an owner for pool operations", async function() {
-      let miner = await setup_miner();
-      let owner = await miner.owner();
-      assert.equal(owner, accounts[0]);
-  });
+    it("should have an owner for pool operations", async function() {
+        let miner = await setup_miner();
+        let owner = await miner.owner();
+        assert.equal(owner, accounts[0]);
+    });
 
-  it("should allow the owner to set the pool percentage", async function() {
-    let miner = await setup_miner();
-    let percentage = await miner.pool_percentage();
-    assert.equal(percentage.valueOf(), 0);
-    await miner.pool_set_percentage(5);
-    percentage = await miner.pool_percentage();
-    assert.equal(percentage.valueOf(), 5);
-  });
+    it("should allow the owner to set the pool percentage", async function() {
+        let miner = await setup_miner();
+        let percentage = await miner.pool_percentage();
+        assert.equal(percentage.valueOf(), 0);
+        await miner.pool_set_percentage(5);
+        percentage = await miner.pool_percentage();
+        assert.equal(percentage.valueOf(), 5);
+    });
 
-  it("should allow the owner to pause the pool", async function() {
-    let miner = await setup_miner();
-    let paused = await miner.isPaused();
-    assert.isFalse(paused);
-    await miner.pool_set_paused(true);
-    paused = await miner.isPaused();
-    assert.isTrue(paused);
-  });
+    it("should allow the owner to pause the pool", async function() {
+        let miner = await setup_miner();
+        let paused = await miner.isPaused();
+        assert.isFalse(paused);
+        await miner.pool_set_paused(true);
+        paused = await miner.isPaused();
+        assert.isTrue(paused);
+    });
 
-  it("should not allow mining on a paused pool", async function() {
-    let miner = await setup_miner();
-    await miner.pool_set_paused(true);
-    try {
-        await miner.sendTransaction({value: web3.toWei(1, 'ether'), from: accounts[0], gas: '125000'});
-    } catch(error) {
-        assertJump(error);
-    }
-  });
+    it("should not allow mining on a paused pool", async function() {
+        let miner = await setup_miner();
+        await miner.pool_set_paused(true);
+        try {
+            await miner.sendTransaction({value: web3.toWei(1, 'ether'), from: accounts[0], gas: '125000'});
+        } catch(error) {
+            assertJump(error);
+        }
+    });
 
 
-//  // Starts with static element testing for constants and setup
-//
-   it("should correctly deploy a miner and an attached bte contract", async function() {
-   	  let miner = await setup_miner();
-   });
- 
+    // Starts with static element testing for constants and setup
+    it("should correctly deploy a miner and an attached bte contract", async function() {
+        let miner = await setup_miner();
+    });
+
  
    it("should return the correct bte contract", async function() {
        let bte = await BitcoineumMock.new();
@@ -315,7 +315,7 @@ contract('GaoPoolTest', function(accounts) {
        await miner.pool_set_mining_attempts(10, 10);
        
        await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
-       await miner.mine({gas: '400000'});
+       await miner.mine({gas: '500000'});
        let epoch_record = await miner.get_epoch_record(0);
        assert.equal(epoch_record[0], 11);
        
@@ -335,7 +335,7 @@ contract('GaoPoolTest', function(accounts) {
        assert.equal(res[3].toString(), '10000000000000000');
        assert.equal(res[4].valueOf(), 0); 
 
-       await miner.mine({gas: '400000'});
+       await miner.mine({gas: '500000'});
 
        await bte_instance.set_block(51);
        await miner.set_block(51);
@@ -364,7 +364,7 @@ contract('GaoPoolTest', function(accounts) {
      await miner.deposit(accounts[0], {value: '10000000000000000', from: accounts[0], gas: '200000'});
   
      for (var i=1; i<101; i++) {
-         await miner.mine({gas: '400000'});
+         await miner.mine({gas: '500000'});
   
            // Fast forward
          await bte_instance.set_block((50*i)+1);
@@ -401,7 +401,7 @@ contract('GaoPoolTest', function(accounts) {
 
      await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
      for (var i=101; i<201; i++) {
-         await miner.mine({gas: '400000'});
+         await miner.mine({gas: '500000'});
   
            // Fast forward
          await bte_instance.set_block((50*i)+1);
@@ -436,7 +436,7 @@ contract('GaoPoolTest', function(accounts) {
  it("should make no mining attempt when there are no users", async function() {
  	let starting_balance = await web3.eth.getBalance("0xdeaDDeADDEaDdeaDdEAddEADDEAdDeadDEADDEaD");
      let miner = await setup_miner();
-     await miner.mine({gas: '300000'});
+     await miner.mine({gas: '500000'});
  	let balance = await web3.eth.getBalance("0xdeaDDeADDEaDdeaDdEAddEADDEAdDeadDEADDEaD");
  	assert.equal(balance.valueOf(), starting_balance.valueOf());
  });
@@ -446,7 +446,7 @@ contract('GaoPoolTest', function(accounts) {
  	let starting_balance = await web3.eth.getBalance("0xdeaDDeADDEaDdeaDdEAddEADDEAdDeadDEADDEaD");
      let miner = await setup_miner();
      await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '150000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
  	let balance = await web3.eth.getBalance("0xdeaDDeADDEaDdeaDdEAddEADDEAdDeadDEADDEaD");
  	assert.equal(balance.minus(starting_balance).toString(), '10000000');
  	let res = await miner.get_epoch_record(0);
@@ -472,7 +472,7 @@ contract('GaoPoolTest', function(accounts) {
  it("should return true for checkMiningAttempt following an attempt", async function() {
      let miner = await setup_miner();
      await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '150000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
      let attempt = await miner.checkMiningAttempt(0, miner.address); 
      assert.isTrue(attempt);
  });
@@ -480,9 +480,9 @@ contract('GaoPoolTest', function(accounts) {
  it("should not allow duplicate mining attempts for same block", async function() {
      let miner = await setup_miner();
      await miner.sendTransaction({value: '1000000000', from: accounts[0], gas: '150000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
      try {
-         await miner.mine({gas: '400000'});
+         await miner.mine({gas: '500000'});
      } catch(error) {
          assertJump(error);
      }
@@ -498,7 +498,7 @@ contract('GaoPoolTest', function(accounts) {
      let miner = await setup_miner();
      // This exhausts the minimum difficulty over 100 block period
      await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
  
      // Fast forward
  	await bte_instance.set_block(51);
@@ -514,7 +514,7 @@ contract('GaoPoolTest', function(accounts) {
      let miner = await setup_miner();
      // This exhausts the minimum difficulty over 100 block period
      await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
  
      // Fast forward
  	await bte_instance.set_block(51);
@@ -543,7 +543,7 @@ contract('GaoPoolTest', function(accounts) {
       await miner.sendTransaction({value: '10000000000000000', from: accounts[2], gas: '150000'});
       await miner.sendTransaction({value: '10000000000000000', from: accounts[3], gas: '150000'});
       await miner.sendTransaction({value: '10000000000000000', from: accounts[4], gas: '150000'});
-      await miner.mine({gas: '400000'});
+      await miner.mine({gas: '500000'});
   
       // Fast forward
   	await bte_instance.set_block(51);
@@ -584,7 +584,7 @@ contract('GaoPoolTest', function(accounts) {
      await miner.sendTransaction({value: '10000000000000000', from: accounts[3], gas: '150000'});
      await miner.sendTransaction({value: '10000000000000000', from: accounts[4], gas: '150000'});
      await miner.sendTransaction({value: '10000000000000000', from: accounts[5], gas: '150000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
  
      // Fast forward
  	await bte_instance.set_block(51);
@@ -625,7 +625,7 @@ contract('GaoPoolTest', function(accounts) {
      
      await miner.sendTransaction({value: '10000000000000000', from: accounts[0], gas: '200000'});
      await miner.sendTransaction({value: '30000000000000000', from: accounts[1], gas: '200000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
  
      // Fast forward
  	await bte_instance.set_block(51);
@@ -673,7 +673,7 @@ contract('GaoPoolTest', function(accounts) {
     await miner.sendTransaction({value: '30000000000000000', from: accounts[1], gas: '200000'});
  
     for (var i=1; i<101; i++) {
-        await miner.mine({gas: '400000'});
+        await miner.mine({gas: '500000'});
  
         // Fast forward
       await bte_instance.set_block((50*i)+1);
@@ -699,7 +699,7 @@ contract('GaoPoolTest', function(accounts) {
     }
  
     try {
-        await miner.mine({gas: '400000'});
+        await miner.mine({gas: '500000'});
     } catch(error) {
         assertJump(error);
     }
@@ -715,7 +715,7 @@ contract('GaoPoolTest', function(accounts) {
      await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '150000'});
  
      for (var i=1; i<51; i++) {
-         await miner.mine({gas: '400000'});
+         await miner.mine({gas: '500000'});
  
          // Fast forward
  	    await bte_instance.set_block((50*i)+1);
@@ -811,7 +811,7 @@ contract('GaoPoolTest', function(accounts) {
     assert.equal(res[3].toString(), '10000000000000000');
     assert.equal(res[4].valueOf(), 0); 
 
-    await miner.mine({gas: '400000'});
+    await miner.mine({gas: '500000'});
 
     
     // Let's redeem and check the balance again, there hasn't been a claim
@@ -877,7 +877,7 @@ it("should let us set max bet", async function() {
      // This exhausts the minimum difficulty over 100 block period
      await miner.set_mine_attempts(99);
      await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '200000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
 
      var res = await miner.find_contribution(accounts[1]);
      assert.equal(res[0].valueOf(), 0);
@@ -895,7 +895,7 @@ it("should let us set max bet", async function() {
      let miner = await setup_miner();
      await miner.set_mine_attempts(99);
      await miner.sendTransaction({value: '10000000000000000', from: accounts[1], gas: '150000'});
-     await miner.mine({gas: '400000'});
+     await miner.mine({gas: '500000'});
  
      // Fast forward
  	await bte_instance.set_block(51);
@@ -948,7 +948,6 @@ it("should let us set max bet", async function() {
          await bte_instance.set_block((50*i)+1);
          await miner.set_block((50*i)+1);
 
-
          //let total_attempts = await miner.total_mine_attempts();
          //console.log(total_attempts);
          let res = await miner.find_contribution(accounts[0]);
@@ -973,7 +972,7 @@ it("should let us set max bet", async function() {
         // At this point we have accrued almost 100
         // This is because of rounding error with fixed point math
         let balance = await miner.balanceOf(accounts[0]);
-        assert.isAbove(balance.valueOf(), 99.999*(10**8));
+        assert.isAbove(balance.toNumber(), 99.999*(10**8));
         accrued_loss = accrued_loss.plus(new BigNumber(100*(10**8)).minus(balance));
 
         //console.log(balance.valueOf());
@@ -1047,7 +1046,7 @@ it("should let us set max bet", async function() {
 
     // This is rounding error slippage
     contract_balance = await web3.eth.getBalance(miner.address);
-    assert.isBelow(contract_balance.valueOf(), 10000000000004000);
+    assert.isBelow(contract_balance.toNumber(), 10000000000004000);
 
  });
 
@@ -1297,6 +1296,72 @@ it("should let us set max bet", async function() {
 //
 //  });
 
+  describe('Events', () => {
+    it('should emit Mined()', async () => {
+        let miner = await setup_miner();
+        let result = await miner.mine({gas: '500000'});
+        
+        let log = result.logs[0];
+        assert.equal(log.event, 'Mined');
+        assert.deepEqual(log.args, { _executor: accounts[0] });
+    });
 
+    it('should emit Deposited()', async () => {
+        let miner = await setup_miner();
+
+        let result = await miner.sendTransaction({
+            value: '10000000000000000', 
+            from: accounts[1], 
+            gas: '200000'
+        });
+        
+        let log = result.logs[0];
+
+        let { _from, _value, _fee } = log.args;
+        assert.equal(_from, accounts[1]);
+        assert.equal(_value.toString(), '10000000000000000');
+        assert.equal(_fee.toString(), '0');
+    });
+
+    it('should emit Redeemed()', async () => {
+        let miner = await setup_miner();
+
+        // 1. Deposit
+        await miner.sendTransaction({
+            value: '10000000000000000', 
+            from: accounts[1], 
+            gas: '200000'
+        });
+
+        // 2. Mine
+        await miner.mine({gas: '500000'});
+
+        // 3. Fast forward to reveal block
+        await bte_instance.set_block(51);
+
+        // 4. Claim
+        await miner.claim(0, accounts[0], {
+            gas: '400000'
+        });
+
+        // 5. Redeem
+        let redeemResult = await miner.redeem(accounts[1], {
+            gas: '500000'
+        });
+        
+        let log = _.find(redeemResult.logs, { 
+            event: 'Redeemed'
+        });
+
+        // Log with "Redeemed" event type is emitted
+        assert.isDefined(log);
+
+        let { _to, _value, _fee } = log.args;
+        assert.equal(_to, accounts[1]);
+        // Should have received 100 BTE which is the full block reward.
+        assert.equal(_value.toString(), '10000000000');
+        assert.equal(_fee.toString(), '0');
+    });
+  })
 
 });
