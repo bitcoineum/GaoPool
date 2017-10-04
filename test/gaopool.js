@@ -1,10 +1,11 @@
 'use strict';
 
+const assert = require('chai').assert;
+
 var GaoPool = artifacts.require("./GaoPool.sol");
 var GaoPoolMock = artifacts.require("./helpers/GaoPoolMock.sol");
 const assertJump = require('zeppelin-solidity/test/helpers/assertJump');
 var BitcoineumMock = artifacts.require('./helpers/BitcoineumMock.sol');
-
 var BigNumber = require("bignumber.js");
 
 // Helper functions
@@ -70,50 +71,49 @@ async function setup_miner() {
 contract('GaoPoolTest', function(accounts) {
 
 
-  // Maxint in Ether
-  var maxint = new BigNumber(2).toPower(256).minus(1);
+    // Maxint in Ether
+    var maxint = new BigNumber(2).toPower(256).minus(1);
 
-  it("should have an owner for pool operations", async function() {
-      let miner = await setup_miner();
-      let owner = await miner.owner();
-      assert.equal(owner, accounts[0]);
-  });
+    it("should have an owner for pool operations", async function() {
+        let miner = await setup_miner();
+        let owner = await miner.owner();
+        assert.equal(owner, accounts[0]);
+    });
 
-  it("should allow the owner to set the pool percentage", async function() {
-    let miner = await setup_miner();
-    let percentage = await miner.pool_percentage();
-    assert.equal(percentage.valueOf(), 0);
-    await miner.pool_set_percentage(5);
-    percentage = await miner.pool_percentage();
-    assert.equal(percentage.valueOf(), 5);
-  });
+    it("should allow the owner to set the pool percentage", async function() {
+        let miner = await setup_miner();
+        let percentage = await miner.pool_percentage();
+        assert.equal(percentage.valueOf(), 0);
+        await miner.pool_set_percentage(5);
+        percentage = await miner.pool_percentage();
+        assert.equal(percentage.valueOf(), 5);
+    });
 
-  it("should allow the owner to pause the pool", async function() {
-    let miner = await setup_miner();
-    let paused = await miner.isPaused();
-    assert.isFalse(paused);
-    await miner.pool_set_paused(true);
-    paused = await miner.isPaused();
-    assert.isTrue(paused);
-  });
+    it("should allow the owner to pause the pool", async function() {
+        let miner = await setup_miner();
+        let paused = await miner.isPaused();
+        assert.isFalse(paused);
+        await miner.pool_set_paused(true);
+        paused = await miner.isPaused();
+        assert.isTrue(paused);
+    });
 
-  it("should not allow mining on a paused pool", async function() {
-    let miner = await setup_miner();
-    await miner.pool_set_paused(true);
-    try {
-        await miner.sendTransaction({value: web3.toWei(1, 'ether'), from: accounts[0], gas: '125000'});
-    } catch(error) {
-        assertJump(error);
-    }
-  });
+    it("should not allow mining on a paused pool", async function() {
+        let miner = await setup_miner();
+        await miner.pool_set_paused(true);
+        try {
+            await miner.sendTransaction({value: web3.toWei(1, 'ether'), from: accounts[0], gas: '125000'});
+        } catch(error) {
+            assertJump(error);
+        }
+    });
 
 
-//  // Starts with static element testing for constants and setup
-//
-   it("should correctly deploy a miner and an attached bte contract", async function() {
-   	  let miner = await setup_miner();
-   });
- 
+    // Starts with static element testing for constants and setup
+    it("should correctly deploy a miner and an attached bte contract", async function() {
+        let miner = await setup_miner();
+    });
+
  
    it("should return the correct bte contract", async function() {
        let bte = await BitcoineumMock.new();
@@ -1297,6 +1297,72 @@ it("should let us set max bet", async function() {
 //
 //  });
 
+  describe('Events', () => {
+    it('should emit Mined()', async () => {
+        let miner = await setup_miner();
+        let result = await miner.mine({gas: '500000'});
+        
+        let log = result.logs[0];
+        assert.equal(log.event, 'Mined');
+        assert.deepEqual(log.args, { _executor: accounts[0] });
+    });
 
+    it('should emit Deposited()', async () => {
+        let miner = await setup_miner();
+
+        let result = await miner.sendTransaction({
+            value: '10000000000000000', 
+            from: accounts[1], 
+            gas: '200000'
+        });
+        
+        let log = result.logs[0];
+
+        let { _from, _value, _fee } = log.args;
+        assert.equal(_from, accounts[1]);
+        assert.equal(_value.toString(), '10000000000000000');
+        assert.equal(_fee.toString(), '0');
+    });
+
+    it('should emit Redeemed()', async () => {
+        let miner = await setup_miner();
+
+        // 1. Deposit
+        await miner.sendTransaction({
+            value: '10000000000000000', 
+            from: accounts[1], 
+            gas: '200000'
+        });
+
+        // 2. Mine
+        await miner.mine({gas: '500000'});
+
+        // 3. Fast forward to reveal block
+        await bte_instance.set_block(51);
+
+        // 4. Claim
+        await miner.claim(0, accounts[0], {
+            gas: '400000'
+        });
+
+        // 5. Redeem
+        let redeemResult = await miner.redeem(accounts[1], {
+            gas: '500000'
+        });
+        
+        let log = _.find(redeemResult.logs, { 
+            event: 'Redeemed'
+        });
+
+        // Log with "Redeemed" event type is emitted
+        assert.isDefined(log);
+
+        let { _to, _value, _fee } = log.args;
+        assert.equal(_to, accounts[1]);
+        // Should have received 100 BTE which is the full block reward.
+        assert.equal(_value.toString(), '10000000000');
+        assert.equal(_fee.toString(), '0');
+    });
+  })
 
 });
