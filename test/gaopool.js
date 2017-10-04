@@ -948,7 +948,6 @@ it("should let us set max bet", async function() {
          await bte_instance.set_block((50*i)+1);
          await miner.set_block((50*i)+1);
 
-
          //let total_attempts = await miner.total_mine_attempts();
          //console.log(total_attempts);
          let res = await miner.find_contribution(accounts[0]);
@@ -973,7 +972,7 @@ it("should let us set max bet", async function() {
         // At this point we have accrued almost 100
         // This is because of rounding error with fixed point math
         let balance = await miner.balanceOf(accounts[0]);
-        assert.isAbove(balance.valueOf(), 99.999*(10**8));
+        assert.isAbove(balance.toNumber(), 99.999*(10**8));
         accrued_loss = accrued_loss.plus(new BigNumber(100*(10**8)).minus(balance));
 
         //console.log(balance.valueOf());
