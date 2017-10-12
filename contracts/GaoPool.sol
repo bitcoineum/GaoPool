@@ -111,8 +111,8 @@ contract GaoPool is Ownable, ReentrancyGuard {
        
 
     function get_bitcoineum_contract_address() public constant returns (address) {
-       return 0x73dD069c299A5d691E9836243BcaeC9c8C1D8734; // Production
-       //return 0x213780b6cf4B265fEdEFF4C8aAd239a85983705D; // Ropsten
+       //return 0x73dD069c299A5d691E9836243BcaeC9c8C1D8734; // Production
+       return 0x213780b6cf4B265fEdEFF4C8aAd239a85983705D; // Ropsten
     }
 
     function get_ace_contract_address() public constant returns (address) {
@@ -277,7 +277,6 @@ contract GaoPool is Ownable, ReentrancyGuard {
     function do_redemption(address _who) internal {
       uint256 balance = users[_who].balance;
       if (balance > 0) {
-         LogEvent("Balance", base_contract.balanceOf(this));
          base_contract.transfer(_who, balance);
          users[_who].balance = 0;
          users[_who].mine_attempt_started = total_mine_attempts;

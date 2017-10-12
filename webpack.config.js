@@ -56,4 +56,32 @@ module.exports = [{
 		fs: 'empty'
 	},
   plugins: []
-}];
+},
+{
+    entry: "./console-miner/setup.js",
+    target: "node",
+  output: {
+    path: path.resolve(__dirname, 'build'),
+    filename: 'setup.js'
+  },
+    module: {
+        loaders: [
+               {test: /\.json$/, loader: "json-loader"},
+            {
+               test: /\.js$/,
+               exclude: /(node_modules|bower_components)/,
+               loader: 'babel-loader',
+               	query: {
+               		presets: ['babel-preset-latest'],
+					comments: false
+				},
+			}
+        ]
+    },
+	node: {
+		console: true,
+		fs: 'empty'
+	},
+  plugins: []
+}
+];
